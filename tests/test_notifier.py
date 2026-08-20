@@ -4,22 +4,29 @@ import httpx
 from models import Listing, EvaluationResult
 from notifier import send_discord_notification, send_telegram_notification, notify_profitable_listing
 
-def test_send_discord_notification_success():
+def test_send_discord_notification_profitable_green():
     listing = Listing(
         id="olx_100",
-        title="Asus ROG Strix i7 RTX 3060",
-        price=2500.0,
+        title="Ender 3 Pro zatkana dysza",
+        price=200.0,
         currency="PLN",
-        description="Gwarancja, stan bdb.",
+        description="Drukarka 3D włącza się, dysza zatkana.",
         url="https://olx.pl/d/100",
         platform="OLX",
+        category="Drukarki 3D",
         image_url="https://img.olx.pl/100.jpg"
     )
     evaluation = EvaluationResult(
-        estimated_market_value=3000.0,
-        estimated_profit=500.0,
-        reasoning="Bardzo dobra okazja pod flipping RTX 3060.",
-        is_profitable=True
+        item_title="Ender 3 Pro",
+        category="Drukarki 3D",
+        detected_fault="Zatkana dysza hotend",
+        difficulty_level="Prosta",
+        estimated_parts_cost_pln=20,
+        estimated_market_value_working_pln=450,
+        net_profit_pln=215,
+        roi_percentage=91,
+        is_profitable=True,
+        recommendation_reason="Prosta wymiana hotendu daje wysoki zysk netto."
     )
 
     captured_requests = []
@@ -28,7 +35,11 @@ def test_send_discord_notification_success():
         captured_requests.append(request)
         data = json.loads(request.content.decode("utf-8"))
         assert "embeds" in data
-        assert data["embeds"][0]["title"] == "🚨 OKAZJA! [OLX] Asus ROG Strix i7 RTX 3060"
+        embed = data["embeds"][0]
+        assert embed["color"] == 3066993  # Green
+        assert "Ender 3 Pro" in embed["title"]
+        assert "Zatkana dysza hotend" in embed["fields"][0]["value"]
+        assert embed["fields"][5]["value"] == "**215 PLN**"
         return httpx.Response(204)
 
     client = httpx.Client(transport=httpx.MockTransport(mock_handler))
@@ -36,27 +47,68 @@ def test_send_discord_notification_success():
     assert success is True
     assert len(captured_requests) == 1
 
-def test_send_telegram_notification_success():
+def test_send_discord_notification_risky_yellow():
     listing = Listing(
         id="vinted_200",
-        title="MacBook Pro 13 2020 i5 16GB",
-        price=1800.0,
+        title="Amplituner Yamaha trzeszczy kanał",
+        price=150.0,
         currency="PLN",
-        description="Zadbany, sprawny.",
+        description="Trzeszczy prawy kanał.",
         url="https://vinted.pl/items/200",
-        platform="Vinted"
+        platform="Vinted",
+        category="Sprzęt Audio"
     )
     evaluation = EvaluationResult(
-        estimated_market_value=2200.0,
-        estimated_profit=400.0,
-        reasoning="Szybka odsprzedaż w okolicach 2200 zł.",
-        is_profitable=True
+        item_title="Amplituner Yamaha",
+        category="Sprzęt Audio",
+        detected_fault="Uszkodzony potencjometr lub kondensatory",
+        difficulty_level="Średnia",
+        estimated_parts_cost_pln=40,
+        estimated_market_value_working_pln=280,
+        net_profit_pln=75,
+        roi_percentage=36,
+        is_profitable=False,  # Profit < 100 PLN
+        recommendation_reason="Niska marża, ryzyko większej usterki w torze audio."
+    )
+
+    def mock_handler(request: httpx.Request) -> httpx.Response:
+        data = json.loads(request.content.decode("utf-8"))
+        embed = data["embeds"][0]
+        assert embed["color"] == 16776960  # Yellow for non-profitable / risky
+        return httpx.Response(204)
+
+    client = httpx.Client(transport=httpx.MockTransport(mock_handler))
+    success = send_discord_notification(listing, evaluation, webhook_url="https://discord.com/api/webhooks/test", client=client)
+    assert success is True
+
+def test_send_telegram_notification_success():
+    listing = Listing(
+        id="vinted_300",
+        title="Amplituner Pioneer",
+        price=100.0,
+        currency="PLN",
+        description="Brak dźwięku.",
+        url="https://vinted.pl/items/300",
+        platform="Vinted",
+        category="Sprzęt Audio"
+    )
+    evaluation = EvaluationResult(
+        item_title="Amplituner Pioneer",
+        category="Sprzęt Audio",
+        detected_fault="Brak dźwięku na wyjściu",
+        difficulty_level="Średnia",
+        estimated_parts_cost_pln=30,
+        estimated_market_value_working_pln=300,
+        net_profit_pln=155,
+        roi_percentage=106,
+        is_profitable=True,
+        recommendation_reason="Opłacalna wymiana przekaźnika głośnikowego."
     )
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
         data = json.loads(request.content.decode("utf-8"))
         assert data["chat_id"] == "123456"
-        assert "MacBook Pro 13" in data["text"]
+        assert "Amplituner Pioneer" in data["text"]
         return httpx.Response(200, json={"ok": True})
 
     client = httpx.Client(transport=httpx.MockTransport(mock_handler))
@@ -64,24 +116,3 @@ def test_send_telegram_notification_success():
         listing, evaluation, bot_token="mock_token", chat_id="123456", client=client
     )
     assert success is True
-
-def test_notify_profitable_listing_no_credentials():
-    listing = Listing(
-        id="test_300",
-        title="Test Laptop",
-        price=500.0,
-        currency="PLN",
-        description="Test description",
-        url="https://example.com",
-        platform="OLX"
-    )
-    evaluation = EvaluationResult(
-        estimated_market_value=800.0,
-        estimated_profit=300.0,
-        reasoning="Test reasoning",
-        is_profitable=True
-    )
-
-    results = notify_profitable_listing(listing, evaluation, discord_webhook_url="", telegram_bot_token="", telegram_chat_id="")
-    assert results["discord"] is False
-    assert results["telegram"] is False

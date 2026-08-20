@@ -11,9 +11,9 @@ from config import (
     FETCH_INTERVAL_SECONDS,
     SEEN_CACHE_FILE,
     PROFIT_THRESHOLD_PLN,
-    OLLAMA_URL,
     OLLAMA_MODEL,
     DEFAULT_HEADERS,
+    CATEGORIES
 )
 from models import Listing, EvaluationResult
 from scrapers.olx import fetch_olx_listings
@@ -53,45 +53,51 @@ def run_monitoring_cycle(
     dry_run: bool = False,
     client: httpx.Client = None
 ) -> List[Listing]:
-    """Execute a single cycle of fetching, evaluating, and notifying."""
-    logger.info("Starting monitoring cycle...")
+    """Execute a single cycle of fetching across categories, evaluating repairs, and notifying."""
+    logger.info("Starting multi-category electronics monitoring cycle...")
 
-    olx_items = fetch_olx_listings(client=client)
-    logger.info(f"Fetched {len(olx_items)} listings from OLX.")
+    all_listings: List[Listing] = []
 
-    vinted_items = fetch_vinted_listings(client=client)
-    logger.info(f"Fetched {len(vinted_items)} listings from Vinted.")
+    for cat_name, cat_config in CATEGORIES.items():
+        logger.info(f"Scanning category: {cat_name}...")
+        olx_items = fetch_olx_listings(client=client, url=cat_config["olx_url"], category=cat_name)
+        vinted_items = fetch_vinted_listings(client=client, search_text=cat_config["vinted_search"], category=cat_name)
+        logger.info(f"[{cat_name}] Fetched {len(olx_items)} from OLX, {len(vinted_items)} from Vinted.")
+        all_listings.extend(olx_items + vinted_items)
 
-    all_listings = olx_items + vinted_items
     new_listings = [item for item in all_listings if item.id not in seen_ids]
-
-    logger.info(f"Found {len(new_listings)} new listings to evaluate.")
+    logger.info(f"Found {len(new_listings)} total new listings to evaluate across all categories.")
 
     processed_listings = []
 
     for listing in new_listings:
         seen_ids.add(listing.id)
-        logger.info(f"Evaluating listing [{listing.platform}]: {listing.title} ({listing.price} {listing.currency})")
+        logger.info(f"Evaluating [{listing.category} - {listing.platform}]: {listing.title} ({listing.price} {listing.currency})")
 
         if dry_run:
-            # Mock evaluation for dry-run
-            logger.info(f"[DRY-RUN] Skipping Ollama API call for {listing.id}")
+            logger.info(f"[DRY-RUN] Mocking evaluation for {listing.id}")
             evaluation = EvaluationResult(
-                estimated_market_value=listing.price + 200.0,
-                estimated_profit=200.0,
-                reasoning="[DRY-RUN Mock Valuation] Laptop jest wart więcej o ok. 200 PLN.",
-                is_profitable=True
+                item_title=listing.title,
+                category=listing.category,
+                detected_fault="[DRY-RUN Mock] Brak zasilania / usterka kosmetyczna",
+                difficulty_level="Prosta",
+                estimated_parts_cost_pln=30,
+                estimated_market_value_working_pln=int(listing.price + 250),
+                net_profit_pln=205,
+                roi_percentage=120,
+                is_profitable=True,
+                recommendation_reason="[DRY-RUN Mock] Łatwa wymiana bezpiecznika/zasilacza, wysoki zysk netto."
             )
         else:
             evaluation = evaluate_listing_with_ollama(listing, client=client)
 
         logger.info(
-            f"Result for {listing.id}: Estimated Value={evaluation.estimated_market_value:.2f} PLN, "
-            f"Profit={evaluation.estimated_profit:.2f} PLN, Profitable={evaluation.is_profitable}"
+            f"Result for {listing.id}: Net Profit={evaluation.net_profit_pln} PLN, ROI={evaluation.roi_percentage}%, "
+            f"Profitable={evaluation.is_profitable}, Fault='{evaluation.detected_fault}'"
         )
 
         if evaluation.is_profitable:
-            logger.info(f"🔥 PROFITABLE LISTING FOUND ({evaluation.estimated_profit:.2f} PLN > {PROFIT_THRESHOLD_PLN:.2f} PLN)! Sending notifications...")
+            logger.info(f"🔥 HIGH PROFIT REPAIR CANDIDATE FOUND ({evaluation.net_profit_pln} PLN >= {PROFIT_THRESHOLD_PLN} PLN)! Dispatching notifications...")
             if not dry_run:
                 notify_profitable_listing(listing, evaluation, client=client)
             else:
@@ -100,17 +106,17 @@ def run_monitoring_cycle(
         processed_listings.append(listing)
 
     save_seen_ids(seen_ids)
-    logger.info("Cycle completed.")
+    logger.info("Monitoring cycle completed.")
     return processed_listings
 
 def main():
-    parser = argparse.ArgumentParser(description="Laptop Flipping Monitor for OLX and Vinted")
+    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor")
     parser.add_argument("--once", action="store_true", help="Run a single check cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Run without calling Ollama API or sending webhooks")
     parser.add_argument("--interval", type=int, default=FETCH_INTERVAL_SECONDS, help="Fetch interval in seconds")
     args = parser.parse_args()
 
-    logger.info(f"Starting Laptop Monitor (Ollama model: {OLLAMA_MODEL}, Profit threshold: {PROFIT_THRESHOLD_PLN} PLN)")
+    logger.info(f"Starting Electronics Repair Monitor (Ollama model: {OLLAMA_MODEL}, Profit threshold: {PROFIT_THRESHOLD_PLN} PLN)")
 
     seen_ids = load_seen_ids()
     logger.info(f"Loaded {len(seen_ids)} previously seen listing IDs.")

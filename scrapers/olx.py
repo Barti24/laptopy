@@ -9,18 +9,16 @@ from config import DEFAULT_HEADERS
 
 logger = logging.getLogger(__name__)
 
-OLX_LAPTOPS_URL = "https://www.olx.pl/elektronika/komputery/laptopy/"
+DEFAULT_OLX_URL = "https://www.olx.pl/elektronika/komputery/laptopy/"
 
-def parse_olx_html(html_content: str) -> List[Listing]:
+def parse_olx_html(html_content: str, category: str = "Inne") -> List[Listing]:
     """Parse HTML content or embedded __PRERENDERED_STATE__ JSON from OLX search page."""
     listings: List[Listing] = []
 
-    # Try parsing embedded script state if available
     state_match = re.search(r'window\.__PRERENDERED_STATE__\s*=\s*(\{.*?\});', html_content, re.DOTALL)
     if state_match:
         try:
             state_data = json.loads(state_match.group(1))
-            # Try finding ads in state_data
             ads_data = None
             if "ad" in state_data and "adData" in state_data["ad"]:
                 ads_data = state_data["ad"]["adData"]
@@ -54,6 +52,7 @@ def parse_olx_html(html_content: str) -> List[Listing]:
                                 description=description,
                                 url=url,
                                 platform="OLX",
+                                category=category,
                                 image_url=image_url
                             ))
                     except Exception as e:
@@ -63,7 +62,6 @@ def parse_olx_html(html_content: str) -> List[Listing]:
         except Exception as e:
             logger.debug(f"Could not parse window.__PRERENDERED_STATE__: {e}")
 
-    # Fallback to BeautifulSoup HTML DOM parsing
     soup = BeautifulSoup(html_content, "html.parser")
     cards = soup.select('div[data-cy="l-card"]')
 
@@ -86,13 +84,11 @@ def parse_olx_html(html_content: str) -> List[Listing]:
             if not price_elem:
                 continue
             price_text = price_elem.get_text(strip=True)
-            # Extract numbers from price string e.g. "1 200 zł" -> 1200.0
             price_nums = re.sub(r'[^\d,.]', '', price_text.replace(' ', '')).replace(',', '.')
             if not price_nums:
                 continue
             price = float(price_nums)
 
-            # Generate listing ID from URL or card ID attribute
             id_match = re.search(r'ID([a-zA-Z0-9]+)\.html', url) or re.search(r'-ID([a-zA-Z0-9]+)', url)
             if id_match:
                 listing_id = f"olx_{id_match.group(1)}"
@@ -110,6 +106,7 @@ def parse_olx_html(html_content: str) -> List[Listing]:
                 description=f"Tytuł: {title}",
                 url=url,
                 platform="OLX",
+                category=category,
                 image_url=image_url
             ))
         except Exception as e:
@@ -117,8 +114,8 @@ def parse_olx_html(html_content: str) -> List[Listing]:
 
     return listings
 
-def fetch_olx_listings(client: httpx.Client = None, url: str = OLX_LAPTOPS_URL) -> List[Listing]:
-    """Fetch laptop listings from OLX."""
+def fetch_olx_listings(client: httpx.Client = None, url: str = DEFAULT_OLX_URL, category: str = "Inne") -> List[Listing]:
+    """Fetch listings from OLX for a given category URL."""
     should_close = False
     if client is None:
         client = httpx.Client(headers=DEFAULT_HEADERS, timeout=10.0, follow_redirects=True)
@@ -127,7 +124,7 @@ def fetch_olx_listings(client: httpx.Client = None, url: str = OLX_LAPTOPS_URL) 
     try:
         response = client.get(url)
         response.raise_for_status()
-        return parse_olx_html(response.text)
+        return parse_olx_html(response.text, category=category)
     except Exception as e:
         logger.error(f"Error fetching OLX listings from {url}: {e}")
         return []

@@ -12,29 +12,39 @@ def send_discord_notification(
     webhook_url: str = DISCORD_WEBHOOK_URL,
     client: Optional[httpx.Client] = None
 ) -> bool:
-    """Send a rich Discord webhook notification for a profitable listing."""
+    """Send a rich Discord webhook notification for an evaluated listing."""
     if not webhook_url:
         logger.info("Discord webhook URL not configured, skipping Discord notification.")
         return False
 
+    # Green for is_profitable == true (profit >= 100 PLN), Yellow for risky / small margin items
+    color = 3066993 if evaluation.is_profitable else 16776960
+
+    status_icon = "🚨 OKAZJA!" if evaluation.is_profitable else "⚠️ RYZYKOWNA / MAŁA MARŻA"
+
     embed = {
-        "title": f"🚨 OKAZJA! [{listing.platform}] {listing.title}",
+        "title": f"{status_icon} [{listing.category} - {listing.platform}] {evaluation.item_title}",
         "url": listing.url,
-        "color": 3066993,  # Green color
+        "color": color,
         "fields": [
-            {"name": "Cena w ogłoszeniu", "value": f"**{listing.price:.2f} {listing.currency}**", "inline": True},
-            {"name": "Szacowana wartość", "value": f"**{evaluation.estimated_market_value:.2f} PLN**", "inline": True},
-            {"name": "Szacowany ZYSK", "value": f"🔥 **+{evaluation.estimated_profit:.2f} PLN**", "inline": True},
-            {"name": "Uzasadnienie AI (qwen2.5:14b)", "value": evaluation.reasoning[:1024], "inline": False},
+            {"name": "Wykryta usterka", "value": evaluation.detected_fault[:1024], "inline": False},
+            {"name": "Trudność naprawy", "value": evaluation.difficulty_level, "inline": True},
+            {"name": "Cena zakupu", "value": f"**{listing.price:.2f} {listing.currency}**", "inline": True},
+            {"name": "Koszt części", "value": f"{evaluation.estimated_parts_cost_pln} PLN", "inline": True},
+            {"name": "Wartość po naprawie", "value": f"{evaluation.estimated_market_value_working_pln} PLN", "inline": True},
+            {"name": "Zysk na czysto (Net Profit)", "value": f"**{evaluation.net_profit_pln} PLN**", "inline": True},
+            {"name": "ROI", "value": f"**{evaluation.roi_percentage}%**", "inline": True},
+            {"name": "Rekomendacja AI (Qwen 2.5)", "value": evaluation.recommendation_reason[:1024], "inline": False},
+            {"name": "Bezpośredni link do oferty", "value": f"[Kliknij, aby przejść do {listing.platform}]({listing.url})", "inline": False}
         ],
-        "footer": {"text": f"Platforma: {listing.platform} | ID: {listing.id}"}
+        "footer": {"text": f"Kategoria: {listing.category} | Platforma: {listing.platform} | ID: {listing.id}"}
     }
 
     if listing.image_url:
         embed["thumbnail"] = {"url": listing.image_url}
 
     payload = {
-        "content": "🎯 Wykryto nową okazję do flippingu laptopa!",
+        "content": f"🎯 Analiza opłacalności naprawy dla ogłoszenia w kategorii **{listing.category}**:",
         "embeds": [embed]
     }
 
@@ -62,19 +72,24 @@ def send_telegram_notification(
     chat_id: str = TELEGRAM_CHAT_ID,
     client: Optional[httpx.Client] = None
 ) -> bool:
-    """Send a Telegram notification for a profitable listing."""
+    """Send a Telegram notification for an evaluated listing."""
     if not bot_token or not chat_id:
         logger.info("Telegram bot token or chat ID not configured, skipping Telegram notification.")
         return False
 
+    status_icon = "🚨 OKAZJA!" if evaluation.is_profitable else "⚠️ RYZYKOWNE"
+
     message_text = (
-        f"🚨 <b>OKAZJA FLIPPING! [{listing.platform}]</b>\n\n"
-        f"<b>Tytuł:</b> {listing.title}\n"
-        f"<b>Cena:</b> {listing.price:.2f} {listing.currency}\n"
-        f"<b>Szacowana wartość:</b> {evaluation.estimated_market_value:.2f} PLN\n"
-        f"🔥 <b>ZYSK: +{evaluation.estimated_profit:.2f} PLN</b>\n\n"
-        f"<b>Uzasadnienie AI:</b> {evaluation.reasoning}\n\n"
-        f"🔗 <a href='{listing.url}'>Zobacz ogłoszenie</a>"
+        f"<b>{status_icon} [{listing.category} - {listing.platform}]</b>\n\n"
+        f"<b>Tytuł:</b> {evaluation.item_title}\n"
+        f"<b>Wykryta usterka:</b> {evaluation.detected_fault}\n"
+        f"<b>Trudność:</b> {evaluation.difficulty_level}\n"
+        f"<b>Cena zakupu:</b> {listing.price:.2f} {listing.currency}\n"
+        f"<b>Koszt części:</b> {evaluation.estimated_parts_cost_pln} PLN\n"
+        f"<b>Wartość po naprawie:</b> {evaluation.estimated_market_value_working_pln} PLN\n"
+        f"🔥 <b>ZYSK NA CZYSTO: {evaluation.net_profit_pln} PLN</b> (ROI: {evaluation.roi_percentage}%)\n\n"
+        f"💡 <b>Rekomendacja AI:</b> {evaluation.recommendation_reason}\n\n"
+        f"🔗 <a href='{listing.url}'>Zobacz ogłoszenie na {listing.platform}</a>"
     )
 
     telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"

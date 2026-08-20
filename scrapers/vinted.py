@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 VINTED_API_URL = "https://www.vinted.pl/api/v2/catalog/items"
 
-def parse_vinted_json(data: Dict[str, Any]) -> List[Listing]:
+def parse_vinted_json(data: Dict[str, Any], category: str = "Inne") -> List[Listing]:
     """Parse JSON response from Vinted catalog API."""
     listings: List[Listing] = []
     items = data.get("items", [])
@@ -19,7 +19,6 @@ def parse_vinted_json(data: Dict[str, Any]) -> List[Listing]:
             title = item.get("title", "").strip()
             price_val = item.get("price") or item.get("total_item_price") or (item.get("price_numeric") if "price_numeric" in item else None)
 
-            # If price is dict or float/str
             if isinstance(price_val, dict):
                 price_amount = float(price_val.get("amount", 0))
                 currency = price_val.get("currency_code", "PLN")
@@ -33,10 +32,8 @@ def parse_vinted_json(data: Dict[str, Any]) -> List[Listing]:
             if url and not url.startswith("http"):
                 url = f"https://www.vinted.pl{url}"
 
-            # Fetch description or fallback to title
             description = item.get("description") or title
 
-            # Photo URL
             photos = item.get("photos", [])
             image_url = None
             if photos and isinstance(photos, list):
@@ -53,6 +50,7 @@ def parse_vinted_json(data: Dict[str, Any]) -> List[Listing]:
                     description=description,
                     url=url,
                     platform="Vinted",
+                    category=category,
                     image_url=image_url
                 ))
         except Exception as e:
@@ -60,15 +58,14 @@ def parse_vinted_json(data: Dict[str, Any]) -> List[Listing]:
 
     return listings
 
-def fetch_vinted_listings(client: httpx.Client = None, search_text: str = "laptop") -> List[Listing]:
-    """Fetch laptop listings from Vinted API with session initialization."""
+def fetch_vinted_listings(client: httpx.Client = None, search_text: str = "laptop", category: str = "Inne") -> List[Listing]:
+    """Fetch listings from Vinted API for a specific search query and category."""
     should_close = False
     if client is None:
         client = httpx.Client(headers=DEFAULT_HEADERS, timeout=10.0, follow_redirects=True)
         should_close = True
 
     try:
-        # Vinted API requires session cookies established by visiting main page first
         try:
             client.get("https://www.vinted.pl/")
         except Exception as e:
@@ -83,9 +80,9 @@ def fetch_vinted_listings(client: httpx.Client = None, search_text: str = "lapto
 
         response = client.get(VINTED_API_URL, params=params)
         response.raise_for_status()
-        return parse_vinted_json(response.json())
+        return parse_vinted_json(response.json(), category=category)
     except Exception as e:
-        logger.error(f"Error fetching Vinted listings: {e}")
+        logger.error(f"Error fetching Vinted listings for '{search_text}': {e}")
         return []
     finally:
         if should_close:
