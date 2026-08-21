@@ -1,14 +1,13 @@
-# Multi-Category Electronics Repair & Flipping Monitor (Vinted / OLX + Ollama Qwen 2.5)
+# Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalach **OLX.pl** oraz **Vinted.pl**, z zaawansowaną analizą opłacalności zakupu i naprawy przy użyciu lokalnego modelu LLM **Ollama (Qwen 2.5)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z zaawansowaną analizą opłacalności zakupu i naprawy przy użyciu lokalnego modelu LLM **Ollama (Qwen 2.5)**.
 
 ---
 
 ## 🛡️ Obejście Blokad 403 (curl_cffi & Chrome Impersonation)
 
-Skrapery wykorzystują bibliotekę **`curl_cffi`** z opcją `impersonate="chrome120"` oraz symulacją pełnego TLS fingerprinting i nagłówków przeglądarki Chrome do bezproblemowego pobierania ogłoszeń bez blokad HTTP 403:
+Skraper wykorzystuje bibliotekę **`curl_cffi`** z opcją `impersonate="chrome120"` oraz symulacją pełnego TLS fingerprinting i nagłówków przeglądarki Chrome do bezproblemowego pobierania ogłoszeń bez blokad HTTP 403:
 - **Vinted**: Posiada mechanizm wstępnego pobierania ciasteczek sesyjnych (`_vinted_fr_session`) z adresu `https://www.vinted.pl/` przed wykonaniem zapytania do API `/api/v2/catalog/items`.
-- **OLX**: Pobiera i parsuje osadzone dane `__PRERENDERED_STATE__` lub strukturę HTML DOM z pełnymi nagłówkami przeglądarki.
 
 ---
 
@@ -25,7 +24,7 @@ Skrypt obsługuje słowa kluczowe i dedykowane filtry wyszukiwania dla wielu kat
 
 ## 🧠 Analiza Naprawy i Wycena przez Ollama (Qwen 2.5)
 
-Dla każdego ogłoszenia model AI zwraca odpowiedź w ścisłym formacie JSON zawierającą:
+Dla każdego ogłoszenia model AI (wywoływany bez limitu czasu `timeout=None`, cierpliwie oczekujący na generowanie odpowiedzi przez CPU) zwraca odpowiedź w ścisłym formacie JSON zawierającą:
 ```json
 {
   "item_title": "PS4 Slim 500GB",
@@ -62,7 +61,7 @@ Powiadomienia na Discordzie wysyłane są w formie estetycznych kart Embed:
   - Cena zakupu, koszt części oraz szacowaną wartość po naprawie,
   - **Zysk na czysto (Net Profit)** oraz **ROI (%)**,
   - Rekomendację AI,
-  - **Bezpośredni link** do ogłoszenia na OLX/Vinted.
+  - **Bezpośredni link** do ogłoszenia na Vinted.
 
 ---
 
@@ -70,7 +69,7 @@ Powiadomienia na Discordzie wysyłane są w formie estetycznych kart Embed:
 
 ### 1. Wymagania
 - Python 3.10+
-- Environment POSIX (Linux / Docker / Proxmox LXC)
+- Środowisko POSIX (Linux / Docker / Proxmox LXC)
 - [Ollama](https://ollama.com/) z pobranym modelem `qwen2.5:14b`:
   ```bash
   ollama pull qwen2.5:14b

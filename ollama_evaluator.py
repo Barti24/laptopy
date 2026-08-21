@@ -44,7 +44,7 @@ def evaluate_listing_with_ollama(
     profit_threshold: float = PROFIT_THRESHOLD_PLN,
     shipping_cost: float = SHIPPING_COST_PLN
 ) -> EvaluationResult:
-    """Send listing details to Ollama API (Qwen 2.5) for repair evaluation and return EvaluationResult."""
+    """Send listing details to Ollama API (Qwen 2.5) for repair evaluation with no timeout (timeout=None)."""
     user_prompt = f"""Przeanalizuj poniższe ogłoszenie pod kątem opłacalności naprawy i odsprzedaży:
 
 Kategoria: {listing.category}
@@ -67,18 +67,17 @@ Opis:
 
     should_close = False
     if client is None:
-        client = httpx.Client(timeout=60.0)
+        client = httpx.Client(timeout=None)
         should_close = True
 
     try:
         api_endpoint = f"{ollama_url.rstrip('/')}/api/chat"
-        response = client.post(api_endpoint, json=payload)
+        response = client.post(api_endpoint, json=payload, timeout=None)
         response.raise_for_status()
 
         response_data = response.json()
         content = response_data.get("message", {}).get("content", "").strip()
 
-        # Clean potential code block markdown wrappers
         if content.startswith("```"):
             content = re.sub(r'^```(?:json)?\n|\n```$', '', content, flags=re.MULTILINE).strip()
 
@@ -102,7 +101,6 @@ Opis:
         total_expenses = listing.price + shipping_cost + parts_cost
         calculated_net_profit = int(market_val_working - total_expenses)
 
-        # Allow LLM provided net profit or fallback to calculated
         if "net_profit_pln" in data and isinstance(data["net_profit_pln"], (int, float)):
             net_profit = int(data["net_profit_pln"])
         else:

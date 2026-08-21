@@ -16,7 +16,6 @@ from config import (
     CATEGORIES
 )
 from models import Listing, EvaluationResult
-from scrapers.olx import fetch_olx_listings
 from scrapers.vinted import fetch_vinted_listings
 from ollama_evaluator import evaluate_listing_with_ollama
 from notifier import notify_profitable_listing
@@ -54,17 +53,18 @@ def run_monitoring_cycle(
     scraper_session: curl_requests.Session = None,
     http_client: httpx.Client = None
 ) -> List[Listing]:
-    """Execute a single cycle of fetching across categories, evaluating repairs, and notifying."""
-    logger.info("Starting multi-category electronics monitoring cycle...")
+    """Execute a single cycle of fetching across categories (Vinted only), evaluating repairs, and notifying."""
+    logger.info("Starting multi-category electronics monitoring cycle (Vinted)...")
 
     all_listings: List[Listing] = []
 
     for cat_name, cat_config in CATEGORIES.items():
-        logger.info(f"Scanning category: {cat_name}...")
-        olx_items = fetch_olx_listings(session=scraper_session, url=cat_config["olx_url"], category=cat_name)
+        logger.info(f"Scanning category on Vinted: {cat_name}...")
+        # OLX scraper temporarily disabled
+        # olx_items = fetch_olx_listings(session=scraper_session, url=cat_config["olx_url"], category=cat_name)
         vinted_items = fetch_vinted_listings(session=scraper_session, search_text=cat_config["vinted_search"], category=cat_name)
-        logger.info(f"[{cat_name}] Fetched {len(olx_items)} from OLX, {len(vinted_items)} from Vinted.")
-        all_listings.extend(olx_items + vinted_items)
+        logger.info(f"[{cat_name}] Fetched {len(vinted_items)} listings from Vinted.")
+        all_listings.extend(vinted_items)
 
     new_listings = [item for item in all_listings if item.id not in seen_ids]
     logger.info(f"Found {len(new_listings)} total new listings to evaluate across all categories.")
@@ -111,7 +111,7 @@ def run_monitoring_cycle(
     return processed_listings
 
 def main():
-    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor")
+    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted)")
     parser.add_argument("--once", action="store_true", help="Run a single check cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Run without calling Ollama API or sending webhooks")
     parser.add_argument("--interval", type=int, default=FETCH_INTERVAL_SECONDS, help="Fetch interval in seconds")
@@ -122,7 +122,7 @@ def main():
     seen_ids = load_seen_ids()
     logger.info(f"Loaded {len(seen_ids)} previously seen listing IDs.")
 
-    with curl_requests.Session(impersonate="chrome120") as scraper_session, httpx.Client(timeout=30.0) as http_client:
+    with curl_requests.Session(impersonate="chrome120") as scraper_session, httpx.Client(timeout=None) as http_client:
         if args.once:
             run_monitoring_cycle(seen_ids, dry_run=args.dry_run, scraper_session=scraper_session, http_client=http_client)
         else:
