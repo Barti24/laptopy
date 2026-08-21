@@ -12,17 +12,17 @@ PROFIT_THRESHOLD_FLIP_PLN = float(os.getenv("PROFIT_THRESHOLD_FLIP_PLN", "80.0")
 PROFIT_THRESHOLD_REPAIR_PLN = float(os.getenv("PROFIT_THRESHOLD_REPAIR_PLN", "100.0"))
 SHIPPING_COST_PLN = float(os.getenv("SHIPPING_COST_PLN", "20.0"))
 
-# Webhook / Notification settings
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-
 # Scraper settings
-FETCH_INTERVAL_SECONDS = int(os.getenv("FETCH_INTERVAL_SECONDS", "300"))
+FETCH_INTERVAL_SECONDS = int(os.getenv("FETCH_INTERVAL_SECONDS", "600"))
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
 }
+
+# Webhook / Notification settings
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # Cache file path for seen listings
 SEEN_CACHE_FILE = os.getenv("SEEN_CACHE_FILE", "seen_listings.json")

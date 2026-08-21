@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import json
 import logging
 import os
@@ -32,7 +33,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-MAX_PAGES_PER_CATEGORY = 5
+MAX_PAGES_PER_CATEGORY = 2
 
 def load_seen_ids(cache_file: str = SEEN_CACHE_FILE) -> Set[str]:
     """Load seen listing IDs from persistent cache file."""
@@ -113,8 +114,8 @@ def run_monitoring_cycle(
     cat_list = list(CATEGORIES.items())
     for idx, (cat_name, cat_config) in enumerate(cat_list):
         if idx > 0:
-            delay = random.uniform(2.0, 4.0)
-            logger.info(f"Inter-category throttling delay: waiting {delay:.2f}s before category '{cat_name}'...")
+            delay = random.uniform(3.0, 6.0)
+            logger.info(f"Inter-category throttling jitter delay: waiting {delay:.2f}s before category '{cat_name}'...")
             time.sleep(delay)
 
         logger.info(f"Scanning category on Vinted: {cat_name} (up to {max_pages} pages)...")
@@ -195,8 +196,13 @@ def run_monitoring_cycle(
     logger.info("Monitoring cycle completed.")
     return processed_listings
 
+def is_night_time() -> bool:
+    """Return True if system local time is between 01:00 and 06:00 (1 <= hour < 6)."""
+    current_hour = datetime.datetime.now().hour
+    return 1 <= current_hour < 6
+
 def main():
-    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted Hybrid Pre-Filter)")
+    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted Rate-Limited)")
     parser.add_argument("--once", action="store_true", help="Run a single check cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Run without calling Ollama API or sending webhooks")
     parser.add_argument("--interval", type=int, default=FETCH_INTERVAL_SECONDS, help="Fetch interval in seconds")
@@ -210,16 +216,24 @@ def main():
 
     with curl_requests.Session(impersonate="chrome120") as scraper_session, httpx.Client(timeout=600.0) as http_client:
         if args.once:
-            run_monitoring_cycle(
-                seen_ids,
-                dry_run=args.dry_run,
-                scraper_session=scraper_session,
-                http_client=http_client,
-                max_pages=args.max_pages
-            )
+            if is_night_time():
+                logger.info("Przerwa nocna (01:00 - 06:00). Skipping single run execution in night hours.")
+            else:
+                run_monitoring_cycle(
+                    seen_ids,
+                    dry_run=args.dry_run,
+                    scraper_session=scraper_session,
+                    http_client=http_client,
+                    max_pages=args.max_pages
+                )
         else:
             logger.info(f"Running continuously with {args.interval} seconds interval...")
             while True:
+                if is_night_time():
+                    logger.info("Przerwa nocna (01:00 - 06:00). Sleeping 1800 seconds (30 minutes)...")
+                    time.sleep(1800)
+                    continue
+
                 try:
                     run_monitoring_cycle(
                         seen_ids,

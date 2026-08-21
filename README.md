@@ -1,6 +1,18 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5 + Live Market Search)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z bezproblemową obsługą cookie bootstrappingu i retry w przypadku HTTP 403 (wykorzystującym `curl_cffi.requests.exceptions.HTTPError` oraz `RequestException`), wsparciem dla opcjonalnych serwerów Proxy (`PROXY_URL`), dwustopniową pre-filtracją (wykluczanie części i zabawek), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z dedykowanymi opóźnieniami i ograniczaniem natężenia ruchu (Rate-Limiting), pauzą nocną, dwustopniową pre-filtracją (wykluczanie części i zabawek), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
+
+---
+
+## ⏱️ Ograniczanie Natężenia Ruchu i Zabezpieczenia (Rate-Limiting)
+
+Skrypt został zoptymalizowany pod kątem bezpiecznego długotrwałego działania bez generowania bloku IP przez Cloudflare:
+1. **Czas Cyklu (`FETCH_INTERVAL_SECONDS = 600`)**: Częstotliwość uruchamiania pętli sprawdzania wynosi **10 minut** (600 sekund).
+2. **Głębokość Skanowania (`MAX_PAGES_PER_CATEGORY = 2`)**: Domyślna głębokość skanowania została zmniejszona do **2 stron per kategoria** w automatycznym cyklu.
+3. **Throttling & Jitter**:
+   - Między stronami w danej kategorii: losowe opóźnienie **1.5s – 3.0s**.
+   - Między poszczególnymi kategoriami: losowe opóźnienie **3.0s – 6.0s**.
+4. **Przerwa Nocna (01:00 – 06:00)**: Jeśli godzina systemowa znajduje się w przedziale 01:00–06:00, skrypt automatycznie pomija pętlę skanowania i uśnie na **30 minut** (`time.sleep(1800)`).
 
 ---
 
@@ -10,8 +22,7 @@ Skraper Vinted (`scrapers/vinted.py`) stosuje zaawansowane mechanizmy radzenia s
 1. **Opcjonalne Proxy (`PROXY_URL`)**: W przypadku całkowitej blokady IP serwera przez Cloudflare, skraper obsługuje zmienną środowiskową `PROXY_URL` (np. `http://user:pass@host:port` lub `socks5://host:port`).
 2. **Cookie Bootstrapping (`bootstrap_vinted_session`)**: Przed pierwszym zapytaniem do API catalog items, klient odwiedza stronę główną `https://www.vinted.pl/` korzystając z `curl_cffi.requests.Session(impersonate="chrome120")` oraz dokładnych nagłówków nawigacyjnych Chrome 120, pobierając aktualne ciasteczka sesyjne (`_vinted_fr_session`).
 3. **Realistyczne Nagłówki Chrome (`HOMEPAGE_HEADERS` i `API_HEADERS`)**: Zapytania zawierają nagłówki prawdziwej przeglądarki Chrome 120, w tym `Referer: https://www.vinted.pl/`, `Accept-Language: pl-PL` oraz nagłówki `Sec-Ch-Ua`.
-4. **Automatyczny Retry po 403 z Dedykowaną Obsługą Wyjątków**: W przypadku napotkania statusu HTTP 403 Forbidden lub wyłapania `HTTPError` / `RequestException`, skraper odświeża sesję (ponownie pobiera ciasteczka ze strony głównej) i ponawia próbę do 2 razy z opóźnieniem.
-5. **Losowe Opóźnienia (Throttling)**: Pomiędzy zapytaniami do kolejnych stron oraz kategorii stosowane są losowe opóźnienia (`1.5s - 3.0s` / `2.0s - 4.0s`), co zapobiega nakładaniu blokad natężenia ruchu.
+4. **Automatyczny Retry po 403**: W przypadku napotkania statusu HTTP 403 Forbidden, skraper odświeża sesję (ponownie pobiera ciasteczka ze strony głównej) i ponawia próbę do 2 razy z opóźnieniem.
 
 ---
 
