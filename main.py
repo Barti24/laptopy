@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import random
 import sys
 import time
 from typing import Set, List
@@ -104,12 +105,18 @@ def run_monitoring_cycle(
     http_client: httpx.Client = None,
     max_pages: int = MAX_PAGES_PER_CATEGORY
 ) -> List[Listing]:
-    """Execute a single cycle of deep-scan fetching across categories (Vinted), hybrid pre-filtering, evaluating repairs, and notifying."""
+    """Execute a single cycle of deep-scan fetching across categories (Vinted) with random throttling, pre-filtering, evaluating repairs, and notifying."""
     logger.info("Starting multi-category electronics deep-scan monitoring cycle (Vinted)...")
 
     new_candidates_to_eval: List[Listing] = []
 
-    for cat_name, cat_config in CATEGORIES.items():
+    cat_list = list(CATEGORIES.items())
+    for idx, (cat_name, cat_config) in enumerate(cat_list):
+        if idx > 0:
+            delay = random.uniform(2.0, 4.0)
+            logger.info(f"Inter-category throttling delay: waiting {delay:.2f}s before category '{cat_name}'...")
+            time.sleep(delay)
+
         logger.info(f"Scanning category on Vinted: {cat_name} (up to {max_pages} pages)...")
         scraped_items = fetch_vinted_listings_deep(
             session=scraper_session,

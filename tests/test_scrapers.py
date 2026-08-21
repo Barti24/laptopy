@@ -1,7 +1,8 @@
 import pytest
 from scrapers.olx import parse_olx_html
-from scrapers.vinted import parse_vinted_json, fetch_vinted_listings_deep
+from scrapers.vinted import parse_vinted_json, fetch_vinted_listings_deep, bootstrap_vinted_session, fetch_vinted_listings
 from models import Listing
+from curl_cffi import requests as curl_requests
 
 def test_parse_olx_html_prerendered_state_with_category():
     html_sample = """
@@ -79,6 +80,42 @@ def test_parse_vinted_json_with_category():
     assert listing.url == "https://www.vinted.pl/items/987654-ender-3"
     assert listing.platform == "Vinted"
 
+def test_vinted_403_retry_and_bootstrap(monkeypatch):
+    class MockResponse:
+        def __init__(self, status_code, json_data=None):
+            self.status_code = status_code
+            self._json_data = json_data or {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise curl_requests.HTTPError(f"HTTP {self.status_code}", response=self)
+
+        def json(self):
+            return self._json_data
+
+    attempts = {"count": 0}
+
+    class MockSession:
+        def __init__(self):
+            self.cookies = {"_vinted_fr_session": "test_cookie"}
+
+        def get(self, url, params=None, headers=None, timeout=15):
+            if "api/v2/catalog/items" in url:
+                attempts["count"] += 1
+                if attempts["count"] == 1:
+                    return MockResponse(403)
+                return MockResponse(200, {"items": [{"id": 111, "title": "Test Laptop", "price": 100}]})
+            return MockResponse(200)
+
+        def close(self):
+            pass
+
+    mock_session = MockSession()
+    items = fetch_vinted_listings(session=mock_session, search_text="laptop")
+    assert len(items) == 1
+    assert items[0].id == "vinted_111"
+    assert attempts["count"] == 2
+
 def test_fetch_vinted_listings_deep_stop_on_seen_boundary(monkeypatch):
     page1_data = {
         "items": [
@@ -105,13 +142,11 @@ def test_fetch_vinted_listings_deep_stop_on_seen_boundary(monkeypatch):
 
     monkeypatch.setattr("scrapers.vinted.fetch_vinted_listings", mock_fetch_vinted_listings)
 
-    # Test 1: All items brand new, fetches page 1 and page 2, stops when page 3 returns empty or hits seen boundary
     seen_ids = set()
     result = fetch_vinted_listings_deep(search_text="laptop", category="Laptopy", seen_ids=seen_ids, max_pages=3)
     assert len(result) == 4
     assert pages_called == [1, 2, 3]
 
-    # Test 2: Page 1 items are already in seen_ids -> stops immediately after page 1
     pages_called.clear()
     seen_ids_existing = {"vinted_101", "vinted_102"}
     result_existing = fetch_vinted_listings_deep(search_text="laptop", category="Laptopy", seen_ids=seen_ids_existing, max_pages=5)

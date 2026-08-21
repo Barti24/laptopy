@@ -1,6 +1,16 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5 + Live Market Search)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z dwustopniową pre-filtracją (wykluczanie części i zabawek), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z bezproblemową obsługą cookie bootstrappingu i retry w przypadku HTTP 403, dwustopniową pre-filtracją (wykluczanie części i zabawek), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
+
+---
+
+## 🛡️ Dedykowana Obsługa Sesji i Obejście 403 (Cookie Bootstrapping & Retry)
+
+Skraper Vinted (`scrapers/vinted.py`) stosuje zaawansowane mechanizmy radzenia sobie z ochroną przed botami:
+1. **Cookie Bootstrapping (`bootstrap_vinted_session`)**: Przed pierwszym zapytaniem do API catalog items, klient odwiedza stronę główną `https://www.vinted.pl/`, pobierając aktualne ciasteczka sesyjne (`_vinted_fr_session`).
+2. **Realistyczne Nagłówki Chrome (`VINTED_HEADERS`)**: Zapytania zawierają nagłówki prawdziwej przeglądarki Chrome 120, w tym `Referer: https://www.vinted.pl/`, `Accept-Language: pl-PL` oraz nagłówki `Sec-Ch-Ua`.
+3. **Automatyczny Retry po 403**: W przypadku napotkania statusu HTTP 403 Forbidden, skraper odświeża sesję (ponownie pobiera ciasteczka ze strony głównej) i ponawia próbę do 2 razy z opóźnieniem.
+4. **Losowe Opóźnienia (Throttling)**: Pomiędzy zapytaniami do kolejnych stron oraz kategorii stosowane są losowe opóźnienia (`1.5s - 3.0s` / `2.0s - 4.0s`), co zapobiega nakładaniu blokad natężenia ruchu.
 
 ---
 
