@@ -1,6 +1,22 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z zaawansowaną analizą opłacalności zakupu i naprawy przy użyciu lokalnego modelu LLM **Ollama (Qwen 2.5)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z pre-filtracją ofert oraz zaawansowaną analizą opłacalności zakupu i naprawy przy użyciu lokalnego modelu LLM **Ollama (Qwen 2.5)**.
+
+---
+
+## ⚡ Pre-Filtracja Ofert (Przed zapytaniem do AI)
+
+Aby znacząco przyspieszyć działanie bota i oszczędzać czas generowania odpowiedzi przez Ollamę, oferty przechodzą przez szybką dwustopniową pre-filtrację w kodzie Pythona:
+
+1. **Limit Ceny Maksymalnej (`max_price`) per kategoria**:
+   - Laptopy: max **800 PLN**
+   - Konsole: max **600 PLN**
+   - Karty graficzne: max **700 PLN**
+   - Drukarki 3D: max **500 PLN**
+   - Sprzęt Audio: max **600 PLN**
+2. **Filtr Słów Kluczowych Usterki (`FAULT_KEYWORDS`)**:
+   Tytuł lub opis musi zawierać przynajmniej jedno ze słów (case-insensitive):
+   `["uszkodzon", "do naprawy", "brak", "nietestowan", "nie włącza", "nie dziala", "pęknięt", "na części", "stacjonarn", "hasło", "icloud", "bios", "artefakt", "zalany"]`
 
 ---
 
@@ -11,20 +27,9 @@ Skraper wykorzystuje bibliotekę **`curl_cffi`** z opcją `impersonate="chrome12
 
 ---
 
-## 🚀 Wszechstronne Kategorie Elektroniki
-
-Skrypt obsługuje słowa kluczowe i dedykowane filtry wyszukiwania dla wielu kategorii urządzeń:
-- **Laptopy**: np. `thinkpad`, `dell latitude`, `uszkodzony`, `brak dysku`
-- **Konsole**: np. `ps4`, `xbox one`, `switch`, `nie czyta płyt`, `głośno chodzi`
-- **Karty graficzne**: np. `rtx`, `gtx`, `rx`, `artefakty`, `przegrzewa się`
-- **Drukarki 3D**: np. `ender`, `neptune`, `zatkana`, `brak serwa`
-- **Sprzęt Audio / Amplitunery**: np. `amplituner`, `brak dźwięku`, `trzeszczy`, `uszkodzony kanał`
-
----
-
 ## 🧠 Analiza Naprawy i Wycena przez Ollama (Qwen 2.5)
 
-Dla każdego ogłoszenia model AI (wywoływany bez limitu czasu `timeout=None`, cierpliwie oczekujący na generowanie odpowiedzi przez CPU) zwraca odpowiedź w ścisłym formacie JSON zawierającą:
+Oferty spełniające pre-filtrację trafiają do API Ollama (z wyłączonym limitu czasu `timeout=None`), które zwraca odpowiedź w ścisłym formacie JSON:
 ```json
 {
   "item_title": "PS4 Slim 500GB",
@@ -40,14 +45,16 @@ Dla każdego ogłoszenia model AI (wywoływany bez limitu czasu `timeout=None`, 
 }
 ```
 
-### 📐 Wzory Finansowe:
+### 📐 Wzory i Warunki Opłacalności:
 - **Koszt wysyłki**: Stały koszt 15 PLN.
 - **Zysk na czysto (Net Profit)**:
   `Wartość Rynkowa po Naprawie - (Cena Zakupu + 15 PLN Wysyłka + Koszt Części)`
 - **ROI**:
   `(Net Profit / Całkowite Wydatki) * 100`
 - **Kryterium Opłacalności (`is_profitable: true`)**:
-  Net Profit >= 100 PLN oraz brak nieopłacalnego ryzyka uszkodzenia rdzenia BGA / płyty głównej / CPU / GPU.
+  - `net_profit_pln >= 100 PLN`
+  - Brak ryzyka trwałego uszkodzenia BGA / płyty głównej / CPU / GPU.
+  - **Automatyczna korekta**: Jeśli w opisie wykrytej usterki widnieje "brak usterki" lub "sprzęt sprawny", Python wymusza `is_profitable = False`.
 
 ---
 
@@ -56,12 +63,6 @@ Dla każdego ogłoszenia model AI (wywoływany bez limitu czasu `timeout=None`, 
 Powiadomienia na Discordzie wysyłane są w formie estetycznych kart Embed:
 - **Zielona ramka**: Urządzenia opłacalne (`is_profitable: true`, zysk netto >= 100 zł),
 - **Żółta ramka**: Oferty ryzykowne lub o niskiej marży.
-- Każde powiadomienie zawiera:
-  - Wykrytą usterkę i trudność naprawy,
-  - Cena zakupu, koszt części oraz szacowaną wartość po naprawie,
-  - **Zysk na czysto (Net Profit)** oraz **ROI (%)**,
-  - Rekomendację AI,
-  - **Bezpośredni link** do ogłoszenia na Vinted.
 
 ---
 

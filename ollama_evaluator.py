@@ -36,6 +36,21 @@ Zasady oceny opłacalności:
 5. Zwróć wyłącznie prawidłowy, czysty obiekt JSON. Nie dodawaj żadnych tekstów wstępnych ani podsumowań poza obiektem JSON.
 """
 
+NO_FAULT_PHRASES = [
+    "brak usterki",
+    "brak usterek",
+    "sprzęt sprawny",
+    "w pełni sprawny",
+    "w pelni sprawny",
+    "brak opisu usterki",
+    "brak opisu uszkodzenia",
+    "brak uszkodzeń",
+    "brak uszkodzen",
+    "sprawny",
+    "stan idealny",
+    "stan bardzo dobry"
+]
+
 def evaluate_listing_with_ollama(
     listing: Listing,
     client: Optional[httpx.Client] = None,
@@ -113,6 +128,12 @@ Opis:
 
         is_profitable_llm = bool(data.get("is_profitable", False))
         is_profitable = is_profitable_llm and (net_profit >= profit_threshold)
+
+        # Force is_profitable = False if detected_fault indicates no fault/fully working item
+        fault_lower = detected_fault.strip().lower()
+        if any(phrase in fault_lower for phrase in NO_FAULT_PHRASES):
+            logger.info(f"Forcing is_profitable=False for {listing.id} because detected fault indicates fully working/no fault: '{detected_fault}'")
+            is_profitable = False
 
         recommendation_reason = str(data.get("recommendation_reason") or "Brak rekomendacji")
 

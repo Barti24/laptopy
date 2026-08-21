@@ -13,7 +13,8 @@ from config import (
     SEEN_CACHE_FILE,
     PROFIT_THRESHOLD_PLN,
     OLLAMA_MODEL,
-    CATEGORIES
+    CATEGORIES,
+    FAULT_KEYWORDS
 )
 from models import Listing, EvaluationResult
 from scrapers.vinted import fetch_vinted_listings
@@ -47,27 +48,50 @@ def save_seen_ids(seen_ids: Set[str], cache_file: str = SEEN_CACHE_FILE) -> None
     except Exception as e:
         logger.error(f"Error saving seen IDs to cache file {cache_file}: {e}")
 
+def passes_pre_filter(listing: Listing, max_price: float) -> bool:
+    """Check if listing price is below category limit and contains at least one fault keyword."""
+    if listing.price > max_price:
+        logger.info(f"Skipping [{listing.id}] - Price {listing.price} PLN exceeds category max limit {max_price} PLN.")
+        return False
+
+    text_to_check = f"{listing.title} {listing.description}".lower()
+    has_fault_keyword = any(kw.lower() in text_to_check for kw in FAULT_KEYWORDS)
+
+    if not has_fault_keyword:
+        logger.info(f"Skipping [{listing.id}] - Title/Description does not contain any fault/damage keyword.")
+        return False
+
+    return True
+
 def run_monitoring_cycle(
     seen_ids: Set[str],
     dry_run: bool = False,
     scraper_session: curl_requests.Session = None,
     http_client: httpx.Client = None
 ) -> List[Listing]:
-    """Execute a single cycle of fetching across categories (Vinted only), evaluating repairs, and notifying."""
+    """Execute a single cycle of fetching across categories (Vinted only), pre-filtering, evaluating repairs, and notifying."""
     logger.info("Starting multi-category electronics monitoring cycle (Vinted)...")
 
     all_listings: List[Listing] = []
 
     for cat_name, cat_config in CATEGORIES.items():
         logger.info(f"Scanning category on Vinted: {cat_name}...")
-        # OLX scraper temporarily disabled
-        # olx_items = fetch_olx_listings(session=scraper_session, url=cat_config["olx_url"], category=cat_name)
         vinted_items = fetch_vinted_listings(session=scraper_session, search_text=cat_config["vinted_search"], category=cat_name)
         logger.info(f"[{cat_name}] Fetched {len(vinted_items)} listings from Vinted.")
-        all_listings.extend(vinted_items)
+
+        max_price = cat_config.get("max_price", 999999.0)
+        filtered_items = []
+        for item in vinted_items:
+            if passes_pre_filter(item, max_price=max_price):
+                filtered_items.append(item)
+            else:
+                # Mark skipped items as seen to avoid re-evaluating on subsequent cycles
+                seen_ids.add(item.id)
+
+        all_listings.extend(filtered_items)
 
     new_listings = [item for item in all_listings if item.id not in seen_ids]
-    logger.info(f"Found {len(new_listings)} total new listings to evaluate across all categories.")
+    logger.info(f"Found {len(new_listings)} total pre-filtered new listings to evaluate with Ollama AI.")
 
     processed_listings = []
 

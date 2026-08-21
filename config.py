@@ -23,29 +23,52 @@ DEFAULT_HEADERS = {
 # Cache file path for seen listings
 SEEN_CACHE_FILE = os.getenv("SEEN_CACHE_FILE", "seen_listings.json")
 
-# Multi-category electronics configuration with keywords and filters
+# Pre-filtering keywords for fault/damage detection (case-insensitive)
+FAULT_KEYWORDS = [
+    "uszkodzon",
+    "do naprawy",
+    "brak",
+    "nietestowan",
+    "nie włącza",
+    "nie dziala",
+    "pęknięt",
+    "na części",
+    "stacjonarn",
+    "hasło",
+    "icloud",
+    "bios",
+    "artefakt",
+    "zalany"
+]
+
+# Multi-category electronics configuration with keywords, max price limits, and search queries
 CATEGORIES = {
     "Laptopy": {
+        "max_price": 800.0,
         "keywords": ["laptop", "thinkpad", "dell latitude", "uszkodzony", "brak dysku"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/laptopy/",
         "vinted_search": "laptop"
     },
     "Konsole": {
+        "max_price": 600.0,
         "keywords": ["ps4", "xbox one", "switch", "nie czyta płyt", "głośno chodzi"],
         "olx_url": "https://www.olx.pl/elektronika/gry-konsole/",
         "vinted_search": "konsola"
     },
     "Karty graficzne": {
+        "max_price": 700.0,
         "keywords": ["rtx", "gtx", "rx", "artefakty", "przegrzewa się"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/czesci/karty-graficzne/",
         "vinted_search": "karta graficzna"
     },
     "Drukarki 3D": {
+        "max_price": 500.0,
         "keywords": ["ender", "neptune", "zatkana", "brak serwa"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/drukarki-skanery/",
         "vinted_search": "drukarka 3d"
     },
     "Sprzęt Audio": {
+        "max_price": 600.0,
         "keywords": ["amplituner", "brak dźwięku", "trzeszczy", "uszkodzony kanał"],
         "olx_url": "https://www.olx.pl/elektronika/sprzet-audio/",
         "vinted_search": "amplituner"

@@ -3,6 +3,46 @@ import json
 import httpx
 from models import Listing
 from ollama_evaluator import evaluate_listing_with_ollama
+from main import passes_pre_filter
+
+def test_passes_pre_filter_valid():
+    listing = Listing(
+        id="test_1",
+        title="Laptop Lenovo ThinkPad T14 do naprawy uszkodzony ekran",
+        price=500.0,
+        currency="PLN",
+        description="Laptop nie działa, zbity ekran.",
+        url="https://example.com/1",
+        platform="Vinted",
+        category="Laptopy"
+    )
+    assert passes_pre_filter(listing, max_price=800.0) is True
+
+def test_passes_pre_filter_exceeds_max_price():
+    listing = Listing(
+        id="test_2",
+        title="Laptop Asus ROG uszkodzony dysk",
+        price=1200.0,
+        currency="PLN",
+        description="Uszkodzony dysk.",
+        url="https://example.com/2",
+        platform="Vinted",
+        category="Laptopy"
+    )
+    assert passes_pre_filter(listing, max_price=800.0) is False
+
+def test_passes_pre_filter_no_fault_keyword():
+    listing = Listing(
+        id="test_3",
+        title="Laptop HP Pavilion w idealnym stanie jak nowy",
+        price=400.0,
+        currency="PLN",
+        description="Super stan, pełen komplet gier i akcesoriów.",
+        url="https://example.com/3",
+        platform="Vinted",
+        category="Laptopy"
+    )
+    assert passes_pre_filter(listing, max_price=800.0) is False
 
 def test_evaluate_listing_repair_profitable():
     mock_listing = Listing(
@@ -12,7 +52,7 @@ def test_evaluate_listing_repair_profitable():
         currency="PLN",
         description="Konsola włącza się, ale napęd nie pobiera płyt. Wymaga czyszczenia.",
         url="https://example.com/ps4",
-        platform="OLX",
+        platform="Vinted",
         category="Konsole"
     )
 
@@ -61,31 +101,31 @@ def test_evaluate_listing_repair_profitable():
     assert result.is_profitable is True
     assert "185 zł zysku" in result.recommendation_reason
 
-def test_evaluate_listing_repair_unprofitable_gpu_die():
+def test_evaluate_listing_forced_non_profitable_when_no_fault():
     mock_listing = Listing(
-        id="test_gpu_2",
-        title="RTX 3070 czarny ekran artefakty",
-        price=600.0,
+        id="test_no_fault_1",
+        title="Konsola PS4 sprawna gierki uszkodzony kabel",
+        price=200.0,
         currency="PLN",
-        description="Karta po spięciu, czarny obraz.",
-        url="https://example.com/rtx3070",
-        platform="OLX",
-        category="Karty graficzne"
+        description="Konsola działa idealnie, po prostu brak kabla HDMI.",
+        url="https://example.com/ps4sprawna",
+        platform="Vinted",
+        category="Konsole"
     )
 
     ollama_response = {
         "message": {
             "content": json.dumps({
-                "item_title": "RTX 3070",
-                "category": "Karty graficzne",
-                "detected_fault": "Uszkodzenie rdzenia GPU / pamięci VRAM",
-                "difficulty_level": "Trudna",
-                "estimated_parts_cost_pln": 400,
-                "estimated_market_value_working_pln": 1000,
-                "net_profit_pln": -15,
-                "roi_percentage": -1,
-                "is_profitable": False,
-                "recommendation_reason": "Wysokie ryzyko uszkodzenia rdzenia BGA, wymiana rdzenia nieopłacalna."
+                "item_title": "PS4",
+                "category": "Konsole",
+                "detected_fault": "Brak usterki, sprzęt w pełni sprawny",
+                "difficulty_level": "Prosta",
+                "estimated_parts_cost_pln": 10,
+                "estimated_market_value_working_pln": 500,
+                "net_profit_pln": 275,
+                "roi_percentage": 122,
+                "is_profitable": True,  # LLM erroneously returned True
+                "recommendation_reason": "Konsola jest sprawna."
             })
         }
     }
@@ -99,6 +139,5 @@ def test_evaluate_listing_repair_unprofitable_gpu_die():
         profit_threshold=100.0
     )
 
+    # Should be forced to False because detected_fault indicates no fault
     assert result.is_profitable is False
-    assert result.net_profit_pln < 100
-    assert "nieopłacalna" in result.recommendation_reason
