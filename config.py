@@ -4,9 +4,10 @@ import os
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
 
-# Flipping evaluation threshold
-PROFIT_THRESHOLD_PLN = float(os.getenv("PROFIT_THRESHOLD_PLN", "100.0"))
-SHIPPING_COST_PLN = float(os.getenv("SHIPPING_COST_PLN", "30.0"))
+# Flipping & Repair evaluation thresholds
+PROFIT_THRESHOLD_FLIP_PLN = float(os.getenv("PROFIT_THRESHOLD_FLIP_PLN", "80.0"))
+PROFIT_THRESHOLD_REPAIR_PLN = float(os.getenv("PROFIT_THRESHOLD_REPAIR_PLN", "100.0"))
+SHIPPING_COST_PLN = float(os.getenv("SHIPPING_COST_PLN", "20.0"))
 
 # Webhook / Notification settings
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")

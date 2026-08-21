@@ -11,7 +11,8 @@ from curl_cffi import requests as curl_requests
 from config import (
     FETCH_INTERVAL_SECONDS,
     SEEN_CACHE_FILE,
-    PROFIT_THRESHOLD_PLN,
+    PROFIT_THRESHOLD_FLIP_PLN,
+    PROFIT_THRESHOLD_REPAIR_PLN,
     OLLAMA_MODEL,
     CATEGORIES,
     FAULT_KEYWORDS
@@ -131,30 +132,32 @@ def run_monitoring_cycle(
             evaluation = EvaluationResult(
                 item_title=listing.title,
                 category=listing.category,
-                detected_fault="[DRY-RUN Mock] Usterka zasilania / obudowy",
-                difficulty_level="Prosta",
-                deal_score=8,
-                verdict="OKAZJA",
-                estimated_market_value=int(listing.price + 250),
-                estimated_repair_cost=30,
-                estimated_parts_cost_pln=30,
-                estimated_resale_price_pln=int(listing.price + 250),
-                net_profit_pln=190,
-                roi_percentage=110,
+                deal_type="OKAZJA_FLIP",
+                deal_score=9,
+                estimated_market_value=int(listing.price + 200),
+                estimated_parts_cost=0,
+                estimated_net_profit=180,
+                roi_percentage=90,
+                negotiation_target=int(listing.price * 0.85),
+                market_liquidity="BARDZO SZYBKO",
+                risk_assessment="NISKIE - sprawny sprzęt z pewną marżą",
+                salvage_value=int(listing.price * 0.5),
+                fault_analysis="Brak usterki / Sprzęt sprawny",
+                repair_difficulty="Brak",
+                repair_steps=["1. Czyszczenie obudowy", "2. Wystawienie ogłoszenia"],
                 is_profitable=True,
-                reasoning="[DRY-RUN Mock] Bardzo dobry stosunek ceny do wartości rynkowej.",
-                recommendation_reason="[DRY-RUN Mock] Łatwa naprawa, wysoka opłacalność."
+                reasoning="[DRY-RUN Mock] Świetna okazja typu Czysty Flip z pewnym zyskiem."
             )
         else:
             evaluation = evaluate_listing_with_ollama(listing, client=http_client)
 
         logger.info(
-            f"Result for {listing.id}: Score={evaluation.deal_score}/10, Verdict='{evaluation.verdict}', "
-            f"Net Profit={evaluation.net_profit_pln} PLN, Profitable={evaluation.is_profitable}"
+            f"Result for {listing.id}: Type='{evaluation.deal_type}', Score={evaluation.deal_score}/10, "
+            f"Net Profit={evaluation.estimated_net_profit} PLN, Profitable={evaluation.is_profitable}"
         )
 
-        if evaluation.is_profitable or evaluation.deal_score >= 5:
-            logger.info(f"🔥 CANDIDATE QUALIFIED FOR DISCORD ALERT ({evaluation.verdict} [{evaluation.deal_score}/10])! Dispatching notification...")
+        if evaluation.is_profitable:
+            logger.info(f"🔥 QUALIFIED DEAL FOUND ({evaluation.deal_type} +{evaluation.estimated_net_profit} PLN)! Dispatching Discord/Telegram notifications...")
             if not dry_run:
                 notify_profitable_listing(listing, evaluation, client=http_client)
             else:
@@ -174,7 +177,7 @@ def main():
     parser.add_argument("--max-pages", type=int, default=MAX_PAGES_PER_CATEGORY, help="Max history pages per category per cycle")
     args = parser.parse_args()
 
-    logger.info(f"Starting Electronics Repair Monitor (Ollama model: {OLLAMA_MODEL}, Profit threshold: {PROFIT_THRESHOLD_PLN} PLN)")
+    logger.info(f"Starting Electronics Monitor (Ollama model: {OLLAMA_MODEL}, Flip threshold: {PROFIT_THRESHOLD_FLIP_PLN} PLN, Repair threshold: {PROFIT_THRESHOLD_REPAIR_PLN} PLN)")
 
     seen_ids = load_seen_ids()
     logger.info(f"Loaded {len(seen_ids)} previously seen listing IDs.")

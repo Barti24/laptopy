@@ -1,6 +1,6 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z hybrydową pre-filtracją ofert, ustrukturyzowanym systemem punktacji AI (Qwen 2.5) oraz przyrostowym skanowaniem historii (Deep Scan).
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z hybrydową pre-filtracją ofert, przyrostowym skanowaniem historii (Deep Scan) oraz ustrukturyzowaną analizą rzeczoznawczą dla dwóch typów okazji przy użyciu **Ollama (Qwen 2.5)**.
 
 ---
 
@@ -19,42 +19,49 @@ Aby zmaksymalizować wyłapywanie okazji i oszczędzać moc obliczeniową, ofert
 
 ---
 
-## 🧠 Punktacja i Werdykt AI przez Ollama (Qwen 2.5)
+## 🧠 Klasyfikacja i Wycena Rzeczoznawcza przez Ollama (Qwen 2.5)
 
-Model Qwen 2.5 przeanalizuje specyfikację sprzętu i zwraca ustrukturyzowaną odpowiedź w formacie JSON:
+Model Qwen 2.5 dokonywuje dokładnej oceny i klasyfikuje ofertę do jednego z dwóch typów okazji:
 
+1. 🎯 **`OKAZJA_FLIP` (Czysty Flip)**:
+   - Sprzęt sprawny/nowy sprzedawany bardzo tanio.
+   - Koszt części = 0 PLN.
+   - Wymagany zysk czysty: `estimated_net_profit >= 80 PLN`.
+2. 🛠️ **`OKAZJA_NAPRAWA` (Sprzęt Do Naprawy)**:
+   - Sprzęt posiadający wadę, uszkodzenie lub brak części z potencjałem zysku po naprawie.
+   - Wymagany zysk czysty po potrąceniu kosztów części i 20 PLN wysyłki: `estimated_net_profit >= 100 PLN`.
+
+### 📋 JSON Schema Odpowiedzi:
 ```json
 {
   "item_title": "PS4 Slim 500GB",
   "category": "Konsole",
-  "detected_fault": "Uszkodzony napęd laser KES-496 oraz zapchane chłodzenie",
-  "difficulty_level": "Prosta",
+  "deal_type": "OKAZJA_NAPRAWA",
   "deal_score": 9,
-  "verdict": "OKAZJA",
   "estimated_market_value": 550,
-  "estimated_repair_cost": 40,
-  "reasoning": "Niska cena zakupu i tani laser dają 280 zł zysku na czysto."
+  "negotiation_target": 170,
+  "market_liquidity": "BARDZO SZYBKO",
+  "risk_assessment": "NISKIE - standardowa wymiana laseru",
+  "salvage_value": 250,
+  "fault_analysis": "Uszkodzony laser napędu KES-496",
+  "repair_difficulty": "ŁATWA",
+  "repair_steps": ["1. Wymiana laseru KES-496", "2. Czyszczenie obudowy"],
+  "estimated_parts_cost": 40,
+  "estimated_net_profit": 260,
+  "reasoning": "Tani laser i bardzo niska cena zakupu zapewniają wysoki zysk netto."
 }
 ```
 
-### 📊 Skala Oceny (`deal_score` & `verdict`):
-- **Score 8–10 (`verdict: "OKAZJA"`)**: Wybitna okazja z wysoką marżą i niskim ryzykiem (ramka zielona).
-- **Score 5–7 (`verdict: "OBSERWUJ"`)**: Ciekawa oferta warta obserwacji lub podjęcia negocjacji (ramka żółta).
-- **Score 1–4 (`verdict: "ODRZUĆ"`)**: Nieopłacalny sprzęt, wysoka cena lub duże ryzyko usterki BGA/zalania.
-
 ---
 
-## 🔔 Elastyczne Alerty Discord & Telegram
+## 🔔 Bogate Powiadomienia Discord
 
-Powiadomienia na Discordzie wysyłane są dla każdej oferty, która otrzyma od AI **`deal_score >= 5`** (werdykt **OKAZJA** lub **OBSERWUJ**):
-- **Zielony Embed**: Werdykt `OKAZJA [8-10/10]`
-- **Żółty Embed**: Werdykt `OBSERWUJ [5-7/10]`
-- Każde powiadomienie zawiera:
-  - Werdykt i dokładną ocenę AI,
-  - Cenę Vinted, szacowaną cenę rynkową oraz koszt części/naprawy,
-  - Zysk na czysto (Net Profit) oraz ROI (%),
-  - Zwięzłe uzasadnienie wygenerowane przez Qwena (`reasoning`),
-  - Bezpośredni link do oferty.
+Powiadomienia na Discordzie wysyłane są w ustrukturyzowanym szablonie zawierającym sekcje:
+- 🎯 **[CZYSTY FLIP]** lub 🛠️ **[DO NAPRAWY]**
+- 💰 **Finanse:** Cena Vinted | Cena Rynkowa | Szacowany Zysk Czysty (ROI %)
+- 🎯 **Strategia:** Sugerowana oferta negocjacyjna na Vinted | Płynność rynku
+- 🛠️ **Diagnoza i Plan:** (sekcja widoczna dla sprzętu do naprawy) Diagnoza | Trudność | Koszt części | Plan
+- 🛡️ **Ryzyko i Plan B:** Poziom ryzyka | Wartość na części (Plan B / dawca) | Uzasadnienie Qwen 2.5
 
 ---
 

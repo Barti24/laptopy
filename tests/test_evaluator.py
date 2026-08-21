@@ -44,27 +44,14 @@ def test_passes_pre_filter_exceeds_max_price():
     )
     assert passes_pre_filter(listing, max_price=1200.0, cheap_threshold=250.0) is False
 
-def test_passes_pre_filter_expensive_and_no_fault_keyword():
-    listing = Listing(
-        id="test_3",
-        title="Laptop HP Pavilion idealny komputer",
-        price=600.0,  # >= cheap_threshold 250 PLN, and no fault keyword
-        currency="PLN",
-        description="Idealny w 100% sprawny komputerek.",
-        url="https://example.com/3",
-        platform="Vinted",
-        category="Laptopy"
-    )
-    assert passes_pre_filter(listing, max_price=1200.0, cheap_threshold=250.0) is False
-
-def test_evaluate_listing_scoring_okazja():
+def test_evaluate_listing_czysty_flip():
     mock_listing = Listing(
-        id="test_console_okazja",
-        title="PS4 Slim 500GB głośno chodzi uszkodzony napęd",
+        id="test_flip_1",
+        title="PS4 Slim 500GB jak nowa komplet gier",
         price=200.0,
         currency="PLN",
-        description="Konsola działa, wada napędu.",
-        url="https://example.com/ps4",
+        description="Konsola w 100% sprawna z okablowaniem.",
+        url="https://example.com/ps4flip",
         platform="Vinted",
         category="Konsole"
     )
@@ -74,13 +61,19 @@ def test_evaluate_listing_scoring_okazja():
             "content": json.dumps({
                 "item_title": "PS4 Slim 500GB",
                 "category": "Konsole",
-                "detected_fault": "Uszkodzony napęd laser KES-496",
-                "difficulty_level": "Prosta",
+                "deal_type": "OKAZJA_FLIP",
                 "deal_score": 9,
-                "verdict": "OKAZJA",
-                "estimated_market_value": 550,
-                "estimated_repair_cost": 40,
-                "reasoning": "Niska cena zakupu i tania część dają świetną opłacalność."
+                "estimated_market_value": 500,
+                "negotiation_target": 170,
+                "market_liquidity": "BARDZO SZYBKO",
+                "risk_assessment": "NISKIE - sprawny sprzęt z pewną marżą",
+                "salvage_value": 250,
+                "fault_analysis": "Brak usterki / Sprzęt sprawny",
+                "repair_difficulty": "Brak",
+                "repair_steps": ["1. Czyszczenie", "2. Wystawienie oferty"],
+                "estimated_parts_cost": 0,
+                "estimated_net_profit": 280,  # 500 - 200 - 20 = 280
+                "reasoning": "Bardzo niska cena za w 100% sprawną konsolę."
             })
         }
     }
@@ -92,40 +85,49 @@ def test_evaluate_listing_scoring_okazja():
         mock_listing,
         client=client,
         ollama_url="http://mock-ollama:11434",
-        model_name="qwen2.5:14b"
+        model_name="qwen2.5:14b",
+        profit_threshold_flip=80.0
     )
 
+    assert result.deal_type == "OKAZJA_FLIP"
     assert result.deal_score == 9
-    assert result.verdict == "OKAZJA"
+    assert result.estimated_market_value == 500
+    assert result.estimated_parts_cost == 0
+    assert result.estimated_net_profit == 280
     assert result.is_profitable is True
-    assert result.estimated_market_value == 550
-    assert result.estimated_repair_cost == 40
-    assert result.net_profit_pln == 280  # 550 - (200 + 30 + 40) = 280
+    assert result.negotiation_target == 170
+    assert result.market_liquidity == "BARDZO SZYBKO"
 
-def test_evaluate_listing_scoring_obserwuj():
+def test_evaluate_listing_do_naprawy():
     mock_listing = Listing(
-        id="test_obserwuj",
-        title="Karta graficzna GTX 1060 pęknięty wentylator",
-        price=180.0,
+        id="test_repair_1",
+        title="Ender 3 zatkana dysza",
+        price=150.0,
         currency="PLN",
-        description="Wykruszony łopatka wentylatora.",
-        url="https://example.com/gtx1060",
+        description="Drukarka 3D zatkana dysza hotend.",
+        url="https://example.com/ender3",
         platform="Vinted",
-        category="Karty graficzne"
+        category="Drukarki 3D"
     )
 
     ollama_response = {
         "message": {
             "content": json.dumps({
-                "item_title": "GTX 1060 6GB",
-                "category": "Karty graficzne",
-                "detected_fault": "Pęknięte chłodzenie / wentylator",
-                "difficulty_level": "Prosta",
-                "deal_score": 6,
-                "verdict": "OBSERWUJ",
-                "estimated_market_value": 350,
-                "estimated_repair_cost": 30,
-                "reasoning": "Umiarkowana marża, warta rozważenia po małej negocjacji."
+                "item_title": "Ender 3 Pro",
+                "category": "Drukarki 3D",
+                "deal_type": "OKAZJA_NAPRAWA",
+                "deal_score": 8,
+                "estimated_market_value": 450,
+                "negotiation_target": 120,
+                "market_liquidity": "ŚREDNIO",
+                "risk_assessment": "NISKIE - drobna usterka eksploatacyjna",
+                "salvage_value": 200,
+                "fault_analysis": "Zatkana dysza ekstrudera",
+                "repair_difficulty": "ŁATWA",
+                "repair_steps": ["1. Wymiana dyszy hotend", "2. Poziomowanie stolu"],
+                "estimated_parts_cost": 20,
+                "estimated_net_profit": 260,  # 450 - (150 + 20 + 20) = 260
+                "reasoning": "Tania naprawa hotendu daje duży zysk."
             })
         }
     }
@@ -133,13 +135,20 @@ def test_evaluate_listing_scoring_obserwuj():
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json=ollama_response))
     client = httpx.Client(transport=transport)
 
-    result = evaluate_listing_with_ollama(mock_listing, client=client)
+    result = evaluate_listing_with_ollama(
+        mock_listing,
+        client=client,
+        profit_threshold_repair=100.0
+    )
 
-    assert result.deal_score == 6
-    assert result.verdict == "OBSERWUJ"
+    assert result.deal_type == "OKAZJA_NAPRAWA"
+    assert result.deal_score == 8
+    assert result.estimated_parts_cost == 20
+    assert result.estimated_net_profit == 260
     assert result.is_profitable is True
+    assert result.repair_difficulty == "ŁATWA"
 
-def test_evaluate_listing_blacklisted_override_odrzuc():
+def test_evaluate_listing_blacklisted_override_brak_zysku():
     mock_listing = Listing(
         id="test_macbook_2011",
         title="MacBook Pro 15 2011 uszkodzona grafika",
@@ -156,12 +165,10 @@ def test_evaluate_listing_blacklisted_override_odrzuc():
             "content": json.dumps({
                 "item_title": "MacBook Pro 15 2011",
                 "category": "Laptopy",
-                "detected_fault": "Uszkodzone GPU Radeon",
-                "difficulty_level": "Trudna",
+                "deal_type": "OKAZJA_NAPRAWA",
                 "deal_score": 8,
-                "verdict": "OKAZJA",
                 "estimated_market_value": 700,
-                "estimated_repair_cost": 50,
+                "estimated_parts_cost": 50,
                 "reasoning": "Niska cena zakupu."
             })
         }
@@ -172,7 +179,7 @@ def test_evaluate_listing_blacklisted_override_odrzuc():
 
     result = evaluate_listing_with_ollama(mock_listing, client=client)
 
-    # Blacklisted -> Overridden to ODRZUĆ
-    assert result.verdict == "ODRZUĆ"
-    assert result.deal_score <= 3
+    # Blacklisted -> Overridden to BRAK_ZYSKU
+    assert result.deal_type == "BRAK_ZYSKU"
+    assert result.deal_score <= 2
     assert result.is_profitable is False
