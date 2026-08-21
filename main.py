@@ -16,7 +16,8 @@ from config import (
     OLLAMA_MODEL,
     CATEGORIES,
     FAULT_KEYWORDS,
-    EXCLUDE_PARTS
+    EXCLUDE_PARTS,
+    EXCLUDE_TOYS
 )
 from models import Listing, EvaluationResult
 from scrapers.vinted import fetch_vinted_listings_deep
@@ -56,8 +57,9 @@ def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float
     """
     Hybrid pre-filter logic:
     1. Must not exceed category max_price limit.
-    2. For 'Laptopy', title must NOT contain spare parts keywords (EXCLUDE_PARTS).
-    3. Passes to AI evaluation if:
+    2. Must NOT contain toy keywords (EXCLUDE_TOYS) in title or description.
+    3. For 'Laptopy', title must NOT contain spare parts keywords (EXCLUDE_PARTS).
+    4. Passes to AI evaluation if:
        a) Price is below cheap_threshold (auto-pass without keyword requirement), OR
        b) Title/Description contains at least one fault keyword root.
     """
@@ -65,7 +67,15 @@ def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float
         logger.info(f"Skipping [{listing.id}] - Price {listing.price} PLN exceeds category max limit {max_price} PLN.")
         return False
 
-    # Check for excluded laptop components/parts
+    text_to_check = f"{listing.title} {listing.description}".lower()
+
+    # Rule 1: Toy and children item exclusion check
+    for toy_keyword in EXCLUDE_TOYS:
+        if toy_keyword.lower() in text_to_check:
+            logger.info(f"Skipping [{listing.id}] - Title/Description contains toy exclusion keyword '{toy_keyword}'.")
+            return False
+
+    # Rule 2: Laptop spare parts exclusion check
     if listing.category == "Laptopy":
         title_lower = listing.title.lower()
         for part in EXCLUDE_PARTS:
@@ -79,7 +89,6 @@ def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float
         return True
 
     # Condition B: Keyword matching
-    text_to_check = f"{listing.title} {listing.description}".lower()
     has_fault_keyword = any(kw.lower() in text_to_check for kw in FAULT_KEYWORDS)
 
     if not has_fault_keyword:

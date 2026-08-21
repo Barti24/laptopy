@@ -69,6 +69,22 @@ EXCLUDE_PARTS = [
     "bateria do"
 ]
 
+# Pre-filtering exclusion keywords for toys and children items
+EXCLUDE_TOYS = [
+    "zabawka",
+    "zabawkowy",
+    "edukacyjny",
+    "dla dzieci",
+    "hello kitty",
+    "barbie",
+    "fisher price",
+    "interaktywny",
+    "grający",
+    "minnie",
+    "paws",
+    "psi patrol"
+]
+
 # Multi-category electronics configuration with raised max_price limits and cheap auto-pass thresholds
 CATEGORIES = {
     "Laptopy": {

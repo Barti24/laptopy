@@ -11,6 +11,7 @@ from config import (
     PROFIT_THRESHOLD_REPAIR_PLN,
     SHIPPING_COST_PLN
 )
+from market_search import search_market_prices
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ ZASADY ANALIZY I KLASYFIKACJI (deal_type):
 
 3. "BRAK_ZYSKU" (Odrzuć):
    - Sprzęt nieopłacalny, za droga oferta, lub występują krytyczne wady BGA/zalanie/czarna lista.
+   - BEZWZGLĘDNA ZASADA: Oceniasz wartość rynkową WYŁĄCZNIE na podstawie podanych z sieci wyników z wyszukiwarki rynkowej. Jeśli wyniki z wyszukiwarki lub opis wskazują, że jest to zabawka, gadżet lub sprzęt o wartości rynkowej poniżej 50 PLN, ustaw verdict / deal_type: BRAK_ZYSKU i deal_score <= 2.
 
 STRATEGIA I CZARNA LISTA:
 - negotiation_target: Sugerowana kwota pierwszej oferty negocjacyjnej na Vinted w PLN (o ok. 10-20% niższa od ceny ogłoszenia).
@@ -43,7 +45,7 @@ Zwróć odpowiedź WYŁĄCZNIE w formacie JSON zgodnym ze schematem:
   "category": "<kategoria sprzętu>",
   "deal_type": "<OKAZJA_FLIP | OKAZJA_NAPRAWA | BRAK_ZYSKU>",
   "deal_score": <liczba całkowita od 1 do 10>,
-  "estimated_market_value": <liczba całkowita - rynkowa cena sprawnego sprzętu w PLN>,
+  "estimated_market_value": <liczba całkowita - rynkowa cena sprawnego sprzętu w PLN na podstawie wyników z wyszukiwarki>,
   "negotiation_target": <liczba całkowita - sugerowana cena negocjacyjna na Vinted w PLN>,
   "market_liquidity": "<BARDZO SZYBKO | ŚREDNIO | NISKA PŁYNNOŚĆ>",
   "risk_assessment": "<NISKIE - ... | ŚREDNIE - ... | WYSOKIE - ...>",
@@ -78,9 +80,15 @@ def evaluate_listing_with_ollama(
     model_name: str = OLLAMA_MODEL,
     profit_threshold_flip: float = PROFIT_THRESHOLD_FLIP_PLN,
     profit_threshold_repair: float = PROFIT_THRESHOLD_REPAIR_PLN,
-    shipping_cost: float = SHIPPING_COST_PLN
+    shipping_cost: float = SHIPPING_COST_PLN,
+    search_market: bool = True
 ) -> EvaluationResult:
-    """Send listing details to Ollama API for dual deal analysis with 600.0s timeout and generation options."""
+    """Send listing details and live DuckDuckGo market search snippets to Ollama API (Qwen 2.5) for evaluation."""
+
+    market_search_results = ""
+    if search_market:
+        market_search_results = search_market_prices(listing.title, max_results=3)
+
     user_prompt = f"""Przeanalizuj poniższe ogłoszenie pod kątem dwóch typów okazji (Czysty Flip vs Sprzęt Do Naprawy):
 
 Kategoria: {listing.category}
@@ -89,6 +97,9 @@ Tytuł ogłoszenia: {listing.title}
 Cena zakupu: {listing.price} {listing.currency}
 Opis:
 {listing.description}
+
+WYNIKI Z WYSZUKIWARKI RYNKOWEJ (Ceny i oferty z OLX / Allegro z sieci):
+{market_search_results if market_search_results else "Brak wyników z sieci."}
 """
 
     payload = {
@@ -205,6 +216,12 @@ Opis:
             repair_steps = str(repair_steps_raw)
 
         reasoning = str(data.get("reasoning") or data.get("recommendation_reason") or "Brak uzasadnienia")
+
+        # Force BRAK_ZYSKU if estimated_market_value is below 50 PLN
+        if market_val < 50:
+            logger.info(f"Overriding deal_type for {listing.id} to BRAK_ZYSKU because market value ({market_val} PLN) is below 50 PLN.")
+            deal_type = "BRAK_ZYSKU"
+            deal_score = min(deal_score, 2)
 
         # Qualification criteria logic
         is_profitable = False

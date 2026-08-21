@@ -1,50 +1,40 @@
-# Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5)
+# Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5 + Live Market Search)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z dwustopniową pre-filtracją ofert (wykluczanie części zamiennych i obudów), przyrostowym skanowaniem historii (Deep Scan) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z dwustopniową pre-filtracją (wykluczanie części i zabawek), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
 
 ---
 
-## ⚡ Hybrydowa Pre-Filtracja Ofert z Wykluczeniem Części
+## ⚡ Hybrydowa Pre-Filtracja Ofert (Przed zapytaniem do AI)
 
 Przed przekazaniem oferty do analizy AI, kod Pythona wykonuje szybki przesiew:
 
 1. **Limit Ceny Maksymalnej (`max_price`) per kategoria**:
-   - Laptopy: max **1200 PLN**
-   - Konsole: max **900 PLN**
-   - Karty graficzne: max **1000 PLN**
-   - Drukarki 3D: max **800 PLN**
-   - Sprzęt Audio: max **600 PLN**
-2. **Wykluczenie Części i Komponentów (`EXCLUDE_PARTS`)**:
-   Dla kategorii Laptopy odrzucane są ogłoszenia dotyczące samych części zamiennych, takich jak: `["ram", "procesor", "processzorok", "cpu", "dysk", "ssd", "hdd", "matryca", "płyta główna", "plyta glowna", "obudowa", "klawiatura do", "bateria do"]`.
-3. **Warunki kwalifikacji do AI**:
+   - Laptopy: max **1200 PLN** | Konsole: max **900 PLN** | Karty graficzne: max **1000 PLN** | Drukarki 3D: max **800 PLN** | Audio: max **600 PLN**
+2. **Czarna Lista Zabawek i Sprzętu dla Dzieci (`EXCLUDE_TOYS`)**:
+   Odrzucanie ogłoszeń zabawek dla dzieci: `["zabawka", "zabawkowy", "edukacyjny", "dla dzieci", "hello kitty", "barbie", "fisher price", "interaktywny", "grający", "minnie", "paws", "psi patrol"]`.
+3. **Wykluczenie Części i Komponentów (`EXCLUDE_PARTS`)**:
+   Dla kategorii Laptopy odrzucane są ogłoszenia dotyczące samych części zamiennych: `["ram", "procesor", "processzorok", "cpu", "dysk", "ssd", "hdd", "matryca", "płyta główna", "plyta glowna", "obudowa", "klawiatura do", "bateria do"]`.
+4. **Warunki kwalifikacji do AI**:
    - **Tanie oferty (AUTO-PASS)**: Laptopy < 250 PLN, Konsole < 150 PLN, Karty graficzne < 150 PLN, Drukarki 3D < 200 PLN, Sprzęt Audio < 150 PLN.
    - **Lub Słowa Kluczowe Usterek (`FAULT_KEYWORDS`)**: np. `uszkodz`, `zepsut`, `nietest`, `dawc`, `napraw`, `brak`, `wada`, `pękn`, `zalaw`, `nie włącza`, `artefakt`, `hasło`, `bios`, `część`, `stan`.
 
 ---
 
-## ⚙️ Konfiguracja Ollama (`qwen2.5:7b`) i Limit Cansu (600s)
+## 🌐 Live Wyszukiwanie Cen w Sieci (DuckDuckGo Search)
 
-- **Model Domyślny**: `qwen2.5:7b` (możliwość nadpisania przez zmienną środowiskową `MODEL_NAME` lub `OLLAMA_MODEL`).
-- **Limit Czasu**: Usługa HTTP korzysta ze sztywnego limitu `timeout=600.0` (10 minut). W przypadku przekroczenia czasu zapytanie jest bezpiecznie pomijane (`httpx.TimeoutException`), logowane i skrypt przechodzi do kolejnej oferty.
-- **Parametry Generowania**:
-  ```json
-  "options": {
-      "num_predict": 300,
-      "temperature": 0.1,
-      "stop": ["}\n", "}]"]
-  }
-  ```
+Przed wysłaniem ogłoszenia do Ollamy, moduł `market_search.py` pobiera w czasie rzeczywistym **top 3 wyniki z wyszukiwarki DuckDuckGo** dla zapytania `f"{tytul_przedmiotu} cena OLX Allegro"`. Fragmenty z opisami i cenami z sieci są przekazywane do prompta w sekcji `WYNIKI Z WYSZUKIWARKI RYNKOWEJ`.
+
+### Zasadnicze reguły prompta:
+- Model wycenia wartość rynkową **WYŁĄCZNIE** na podstawie wyników z wyszukiwarki rynkowej.
+- Jeśli wyniki lub opis wskazują, że sprzęt ma wartość rynkową **poniżej 50 PLN**, skrypt automatycznie ustawia `verdict: BRAK_ZYSKU`.
 
 ---
 
-## 🧠 Klasyfikacja i Wycena Rzeczoznawcza
+## 🧠 Klasyfikacja i Wycena Rzeczoznawcza (`qwen2.5:7b`)
 
 Model Qwen 2.5 dokonywuje oceny i klasyfikuje ofertę do jednego z dwóch typów okazji:
-
-1. 🎯 **`OKAZJA_FLIP` (Czysty Flip)**:
-   - Sprzęt sprawny/nowy sprzedawany bardzo tanio (net_profit >= 80 PLN).
-2. 🛠️ **`OKAZJA_NAPRAWA` (Sprzęt Do Naprawy)**:
-   - Sprzęt z wadą lub brakiem części (net_profit >= 100 PLN po potrąceniu kosztów części i 20 PLN wysyłki).
+- 🎯 **`OKAZJA_FLIP` (Czysty Flip)**: net_profit >= 80 PLN.
+- 🛠️ **`OKAZJA_NAPRAWA` (Sprzęt Do Naprawy)**: net_profit >= 100 PLN (po potrąceniu kosztów części i 20 PLN wysyłki).
 
 ### 📋 JSON Schema Odpowiedzi:
 ```json
