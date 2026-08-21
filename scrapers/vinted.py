@@ -3,6 +3,7 @@ import random
 import time
 from typing import List, Dict, Any, Optional, Set
 from curl_cffi import requests as curl_requests
+from curl_cffi.requests.exceptions import RequestException, HTTPError
 from models import Listing
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ def bootstrap_vinted_session(session: curl_requests.Session) -> bool:
         response.raise_for_status()
         logger.info("Successfully bootstrapped Vinted session cookies.")
         return True
-    except Exception as e:
+    except (RequestException, Exception) as e:
         logger.warning(f"Failed to bootstrap Vinted session cookies: {e}")
         return False
 
@@ -133,7 +134,7 @@ def fetch_vinted_listings(
                 response.raise_for_status()
                 return parse_vinted_json(response.json(), category=category)
 
-            except curl_requests.HTTPError as e:
+            except HTTPError as e:
                 status_code = getattr(e.response, "status_code", None) if hasattr(e, "response") else None
                 if status_code == 403 and attempt < MAX_403_RETRIES:
                     logger.warning(f"HTTP 403 Forbidden exception on page {page} attempt {attempt+1}. Refreshing session...")
@@ -141,8 +142,11 @@ def fetch_vinted_listings(
                     bootstrap_vinted_session(session)
                     continue
                 else:
-                    logger.error(f"Error fetching Vinted page {page} for '{search_text}': {e}")
+                    logger.error(f"HTTP error fetching Vinted page {page} for '{search_text}': {e}")
                     return []
+            except RequestException as e:
+                logger.error(f"Request error fetching Vinted page {page} for '{search_text}': {e}")
+                return []
             except Exception as e:
                 logger.error(f"Unexpected error fetching Vinted page {page} for '{search_text}': {e}")
                 return []
