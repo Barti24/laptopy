@@ -6,7 +6,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
 
 # Flipping evaluation threshold
 PROFIT_THRESHOLD_PLN = float(os.getenv("PROFIT_THRESHOLD_PLN", "100.0"))
-SHIPPING_COST_PLN = float(os.getenv("SHIPPING_COST_PLN", "15.0"))
+SHIPPING_COST_PLN = float(os.getenv("SHIPPING_COST_PLN", "30.0"))
 
 # Webhook / Notification settings
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")

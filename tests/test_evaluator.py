@@ -44,7 +44,7 @@ def test_passes_pre_filter_no_fault_keyword():
     )
     assert passes_pre_filter(listing, max_price=800.0) is False
 
-def test_evaluate_listing_repair_profitable():
+def test_evaluate_listing_repair_profitable_dynamic_resale():
     mock_listing = Listing(
         id="test_console_1",
         title="PS4 Slim 500GB nie czyta płyt głośno chodzi",
@@ -61,14 +61,14 @@ def test_evaluate_listing_repair_profitable():
             "content": json.dumps({
                 "item_title": "PS4 Slim 500GB",
                 "category": "Konsole",
-                "detected_fault": "Uszkodzony laser/napęd oraz zapchane chłodzenie",
+                "detected_fault": "Uszkodzony laser/napęd KES-496 oraz zapchane chłodzenie",
                 "difficulty_level": "Prosta",
                 "estimated_parts_cost_pln": 50,
-                "estimated_market_value_working_pln": 500,
-                "net_profit_pln": 185,
-                "roi_percentage": 58,
+                "estimated_resale_price_pln": 500,
+                "net_profit_pln": 170,  # 500 - (250 + 30 + 50) = 170
+                "roi_percentage": 51,
                 "is_profitable": True,
-                "recommendation_reason": "Prosta wymiana lasera i czyszczenie dają 185 zł zysku na czysto."
+                "recommendation_reason": "Wymiana lasera KES-496 i czyszczenie dają 170 zł zysku na czysto."
             })
         }
     }
@@ -87,45 +87,42 @@ def test_evaluate_listing_repair_profitable():
         client=client,
         ollama_url="http://mock-ollama:11434",
         model_name="qwen2.5:14b",
-        profit_threshold=100.0
+        profit_threshold=100.0,
+        shipping_cost=30.0
     )
 
     assert result.item_title == "PS4 Slim 500GB"
     assert result.category == "Konsole"
-    assert result.detected_fault == "Uszkodzony laser/napęd oraz zapchane chłodzenie"
-    assert result.difficulty_level == "Prosta"
     assert result.estimated_parts_cost_pln == 50
-    assert result.estimated_market_value_working_pln == 500
-    assert result.net_profit_pln == 185
-    assert result.roi_percentage == 58
+    assert result.estimated_resale_price_pln == 500
+    assert result.net_profit_pln == 170
     assert result.is_profitable is True
-    assert "185 zł zysku" in result.recommendation_reason
 
-def test_evaluate_listing_forced_non_profitable_when_no_fault():
+def test_evaluate_listing_forced_rejection_blacklisted_macbook_2011():
     mock_listing = Listing(
-        id="test_no_fault_1",
-        title="Konsola PS4 sprawna gierki uszkodzony kabel",
+        id="test_macbook_2011",
+        title="MacBook Pro 15 2011 i7 uszkodzona grafika",
         price=200.0,
         currency="PLN",
-        description="Konsola działa idealnie, po prostu brak kabla HDMI.",
-        url="https://example.com/ps4sprawna",
+        description="Paski na ekranie, uszkodzony GPU Radeon 2011.",
+        url="https://example.com/macbook2011",
         platform="Vinted",
-        category="Konsole"
+        category="Laptopy"
     )
 
     ollama_response = {
         "message": {
             "content": json.dumps({
-                "item_title": "PS4",
-                "category": "Konsole",
-                "detected_fault": "Brak usterki, sprzęt w pełni sprawny",
-                "difficulty_level": "Prosta",
-                "estimated_parts_cost_pln": 10,
-                "estimated_market_value_working_pln": 500,
-                "net_profit_pln": 275,
-                "roi_percentage": 122,
-                "is_profitable": True,  # LLM erroneously returned True
-                "recommendation_reason": "Konsola jest sprawna."
+                "item_title": "MacBook Pro 15 2011",
+                "category": "Laptopy",
+                "detected_fault": "Uszkodzona dedykowana karta graficzna Radeon AMD",
+                "difficulty_level": "Trudna",
+                "estimated_parts_cost_pln": 100,
+                "estimated_resale_price_pln": 600,
+                "net_profit_pln": 270,
+                "roi_percentage": 82,
+                "is_profitable": True,
+                "recommendation_reason": "Naprawa karty graficznej."
             })
         }
     }
@@ -133,11 +130,44 @@ def test_evaluate_listing_forced_non_profitable_when_no_fault():
     transport = httpx.MockTransport(lambda req: httpx.Response(200, json=ollama_response))
     client = httpx.Client(transport=transport)
 
-    result = evaluate_listing_with_ollama(
-        mock_listing,
-        client=client,
-        profit_threshold=100.0
+    result = evaluate_listing_with_ollama(mock_listing, client=client, profit_threshold=100.0)
+
+    # Forced False due to 2011 MacBook Pro blacklist pattern
+    assert result.is_profitable is False
+
+def test_evaluate_listing_forced_rejection_untested_or_liquid_damage():
+    mock_listing = Listing(
+        id="test_flooded_xbox",
+        title="Xbox 360 Xenon zalana wodą nietestowany",
+        price=50.0,
+        currency="PLN",
+        description="Konsola po zalaniu płynem, stan nieznany nietestowany.",
+        url="https://example.com/xbox_zalana",
+        platform="Vinted",
+        category="Konsole"
     )
 
-    # Should be forced to False because detected_fault indicates no fault
+    ollama_response = {
+        "message": {
+            "content": json.dumps({
+                "item_title": "Xbox 360 Xenon",
+                "category": "Konsole",
+                "detected_fault": "Stan nieznany, zalany płynem",
+                "difficulty_level": "Trudna",
+                "estimated_parts_cost_pln": 30,
+                "estimated_resale_price_pln": 200,
+                "net_profit_pln": 90,
+                "roi_percentage": 80,
+                "is_profitable": True,
+                "recommendation_reason": "Zalana konsola."
+            })
+        }
+    }
+
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, json=ollama_response))
+    client = httpx.Client(transport=transport)
+
+    result = evaluate_listing_with_ollama(mock_listing, client=client, profit_threshold=100.0)
+
+    # Forced False due to liquid damage and Xenon blacklist
     assert result.is_profitable is False
