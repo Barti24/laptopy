@@ -1,6 +1,7 @@
 import pytest
 from scrapers.olx import parse_olx_html
-from scrapers.vinted import parse_vinted_json
+from scrapers.vinted import parse_vinted_json, fetch_vinted_listings_deep
+from models import Listing
 
 def test_parse_olx_html_prerendered_state_with_category():
     html_sample = """
@@ -77,3 +78,42 @@ def test_parse_vinted_json_with_category():
     assert listing.category == "Drukarki 3D"
     assert listing.url == "https://www.vinted.pl/items/987654-ender-3"
     assert listing.platform == "Vinted"
+
+def test_fetch_vinted_listings_deep_stop_on_seen_boundary(monkeypatch):
+    page1_data = {
+        "items": [
+            {"id": 101, "title": "Laptop 101 uszkodzony", "price": 100},
+            {"id": 102, "title": "Laptop 102 uszkodzony", "price": 120}
+        ]
+    }
+    page2_data = {
+        "items": [
+            {"id": 103, "title": "Laptop 103 uszkodzony", "price": 130},
+            {"id": 104, "title": "Laptop 104 uszkodzony", "price": 140}
+        ]
+    }
+
+    pages_called = []
+
+    def mock_fetch_vinted_listings(session=None, search_text="laptop", category="Laptopy", page=1, per_page=20):
+        pages_called.append(page)
+        if page == 1:
+            return parse_vinted_json(page1_data, category=category)
+        elif page == 2:
+            return parse_vinted_json(page2_data, category=category)
+        return []
+
+    monkeypatch.setattr("scrapers.vinted.fetch_vinted_listings", mock_fetch_vinted_listings)
+
+    # Test 1: All items brand new, fetches page 1 and page 2, stops when page 3 returns empty or hits seen boundary
+    seen_ids = set()
+    result = fetch_vinted_listings_deep(search_text="laptop", category="Laptopy", seen_ids=seen_ids, max_pages=3)
+    assert len(result) == 4
+    assert pages_called == [1, 2, 3]
+
+    # Test 2: Page 1 items are already in seen_ids -> stops immediately after page 1
+    pages_called.clear()
+    seen_ids_existing = {"vinted_101", "vinted_102"}
+    result_existing = fetch_vinted_listings_deep(search_text="laptop", category="Laptopy", seen_ids=seen_ids_existing, max_pages=5)
+    assert len(result_existing) == 2
+    assert pages_called == [1]

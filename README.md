@@ -1,6 +1,22 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z pre-filtracją ofert oraz zaawansowaną dynamiczną analizą opłacalności zakupu i naprawy przy użyciu lokalnego modelu LLM **Ollama (Qwen 2.5)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z przyrostowym skanowaniem historii (Backfill Deep Scan), pre-filtracją ofert oraz zaawansowaną dynamiczną analizą opłacalności zakupu i naprawy przy użyciu lokalnego modelu LLM **Ollama (Qwen 2.5)**.
+
+---
+
+## 🔄 Przyrostowe Skanowanie Historii (Deep Scan / Backfill)
+
+Bot stosuje inteligentny algorytm poruszania się po stronach wyników Vinted dla każdej kategorii:
+
+1. **Priorytet dla Najnowszych**:
+   - W pierwszej kolejności pobiera **Stronę 1** (najnowsze 20-30 ofert), zapewniając natychmiastowy czas reakcji na świeże okazje.
+2. **Przyrostowe Cofanie Się w Historii (Deep Scan)**:
+   - Jeśli Strona 1 zawiera nowe, niesprawdzone ogłoszenia, bot pobiera kolejne strony (Strona 2, 3, 4...).
+   - Paginacja automatycznie zatrzymuje się w momencie natrafienia na stronę, na której **wszystkie ogłoszenia są już w pliku `seen_ids`** (granica historii).
+3. **Limit Bezpieczeństwa (`MAX_PAGES`)**:
+   - Ustalony twardy limit głębokości (domyślnie **MAX_PAGES = 5** stron per kategoria w jednym cyklu), co zapobiega generowaniu nadmiernej liczby zapytań HTTP oraz blokadom Rate Limit/Cloudflare.
+4. **Trwałość Stanu (Persistence)**:
+   - Każde sprawdzone ID (zarówno zakwalifikowane do wyceny LLM, jak i odrzucone przez pre-filter) natychmiast trafia do pliku `seen_listings.json`, gwarantując, że ogłoszenie nigdy nie zostanie przeanalizowane dwa razy.
 
 ---
 
@@ -17,6 +33,13 @@ Przed przekazaniem oferty do analizy AI, kod Pythona wykonuje szybki przesiew:
 2. **Słowa Kluczowe Usterek (`FAULT_KEYWORDS`)**:
    Tytuł lub opis musi zawierać przynajmniej jedno ze słów (case-insensitive):
    `["uszkodzon", "do naprawy", "brak", "nietestowan", "nie włącza", "nie dziala", "pęknięt", "na części", "stacjonarn", "hasło", "icloud", "bios", "artefakt", "zalany"]`
+
+---
+
+## 🛡️ Obejście Blokad 403 (curl_cffi & Chrome Impersonation)
+
+Skraper wykorzystuje bibliotekę **`curl_cffi`** z opcją `impersonate="chrome120"` oraz symulacją pełnego TLS fingerprinting i nagłówków przeglądarki Chrome do bezproblemowego pobierania ogłoszeń bez blokad HTTP 403:
+- **Vinted**: Posiada mechanizm wstępnego pobierania ciasteczek sesyjnych (`_vinted_fr_session`) z adresu `https://www.vinted.pl/` przed wykonaniem zapytania do API `/api/v2/catalog/items`.
 
 ---
 

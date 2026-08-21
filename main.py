@@ -17,7 +17,7 @@ from config import (
     FAULT_KEYWORDS
 )
 from models import Listing, EvaluationResult
-from scrapers.vinted import fetch_vinted_listings
+from scrapers.vinted import fetch_vinted_listings_deep
 from ollama_evaluator import evaluate_listing_with_ollama
 from notifier import notify_profitable_listing
 
@@ -27,6 +27,8 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("main")
+
+MAX_PAGES_PER_CATEGORY = 5
 
 def load_seen_ids(cache_file: str = SEEN_CACHE_FILE) -> Set[str]:
     """Load seen listing IDs from persistent cache file."""
@@ -67,36 +69,48 @@ def run_monitoring_cycle(
     seen_ids: Set[str],
     dry_run: bool = False,
     scraper_session: curl_requests.Session = None,
-    http_client: httpx.Client = None
+    http_client: httpx.Client = None,
+    max_pages: int = MAX_PAGES_PER_CATEGORY
 ) -> List[Listing]:
-    """Execute a single cycle of fetching across categories (Vinted only), pre-filtering, evaluating repairs, and notifying."""
-    logger.info("Starting multi-category electronics monitoring cycle (Vinted)...")
+    """Execute a single cycle of deep-scan fetching across categories (Vinted), pre-filtering, evaluating repairs, and notifying."""
+    logger.info("Starting multi-category electronics deep-scan monitoring cycle (Vinted)...")
 
-    all_listings: List[Listing] = []
+    new_candidates_to_eval: List[Listing] = []
 
     for cat_name, cat_config in CATEGORIES.items():
-        logger.info(f"Scanning category on Vinted: {cat_name}...")
-        vinted_items = fetch_vinted_listings(session=scraper_session, search_text=cat_config["vinted_search"], category=cat_name)
-        logger.info(f"[{cat_name}] Fetched {len(vinted_items)} listings from Vinted.")
+        logger.info(f"Scanning category on Vinted: {cat_name} (up to {max_pages} pages)...")
+        scraped_items = fetch_vinted_listings_deep(
+            session=scraper_session,
+            search_text=cat_config["vinted_search"],
+            category=cat_name,
+            seen_ids=seen_ids,
+            max_pages=max_pages
+        )
 
         max_price = cat_config.get("max_price", 999999.0)
-        filtered_items = []
-        for item in vinted_items:
+
+        cat_new_candidates = 0
+        for item in scraped_items:
+            if item.id in seen_ids:
+                continue
+
+            # Ensure every examined item is recorded in seen_ids immediately
+            seen_ids.add(item.id)
+
             if passes_pre_filter(item, max_price=max_price):
-                filtered_items.append(item)
-            else:
-                # Mark skipped items as seen to avoid re-evaluating on subsequent cycles
-                seen_ids.add(item.id)
+                new_candidates_to_eval.append(item)
+                cat_new_candidates += 1
 
-        all_listings.extend(filtered_items)
+        logger.info(f"[{cat_name}] {len(scraped_items)} items retrieved, {cat_new_candidates} passed pre-filter for LLM evaluation.")
 
-    new_listings = [item for item in all_listings if item.id not in seen_ids]
-    logger.info(f"Found {len(new_listings)} total pre-filtered new listings to evaluate with Ollama AI.")
+    # Immediately persist updated seen_ids
+    save_seen_ids(seen_ids)
+
+    logger.info(f"Found {len(new_candidates_to_eval)} total pre-filtered new listings to evaluate with Ollama AI.")
 
     processed_listings = []
 
-    for listing in new_listings:
-        seen_ids.add(listing.id)
+    for listing in new_candidates_to_eval:
         logger.info(f"Evaluating [{listing.category} - {listing.platform}]: {listing.title} ({listing.price} {listing.currency})")
 
         if dry_run:
@@ -107,9 +121,9 @@ def run_monitoring_cycle(
                 detected_fault="[DRY-RUN Mock] Brak zasilania / usterka kosmetyczna",
                 difficulty_level="Prosta",
                 estimated_parts_cost_pln=30,
-                estimated_market_value_working_pln=int(listing.price + 250),
-                net_profit_pln=205,
-                roi_percentage=120,
+                estimated_resale_price_pln=int(listing.price + 250),
+                net_profit_pln=190,
+                roi_percentage=110,
                 is_profitable=True,
                 recommendation_reason="[DRY-RUN Mock] Łatwa wymiana bezpiecznika/zasilacza, wysoki zysk netto."
             )
@@ -130,15 +144,17 @@ def run_monitoring_cycle(
 
         processed_listings.append(listing)
 
+    # Save final seen_ids state after evaluation loop
     save_seen_ids(seen_ids)
     logger.info("Monitoring cycle completed.")
     return processed_listings
 
 def main():
-    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted)")
+    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted Deep Scan)")
     parser.add_argument("--once", action="store_true", help="Run a single check cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Run without calling Ollama API or sending webhooks")
     parser.add_argument("--interval", type=int, default=FETCH_INTERVAL_SECONDS, help="Fetch interval in seconds")
+    parser.add_argument("--max-pages", type=int, default=MAX_PAGES_PER_CATEGORY, help="Max history pages per category per cycle")
     args = parser.parse_args()
 
     logger.info(f"Starting Electronics Repair Monitor (Ollama model: {OLLAMA_MODEL}, Profit threshold: {PROFIT_THRESHOLD_PLN} PLN)")
@@ -148,12 +164,24 @@ def main():
 
     with curl_requests.Session(impersonate="chrome120") as scraper_session, httpx.Client(timeout=None) as http_client:
         if args.once:
-            run_monitoring_cycle(seen_ids, dry_run=args.dry_run, scraper_session=scraper_session, http_client=http_client)
+            run_monitoring_cycle(
+                seen_ids,
+                dry_run=args.dry_run,
+                scraper_session=scraper_session,
+                http_client=http_client,
+                max_pages=args.max_pages
+            )
         else:
             logger.info(f"Running continuously with {args.interval} seconds interval...")
             while True:
                 try:
-                    run_monitoring_cycle(seen_ids, dry_run=args.dry_run, scraper_session=scraper_session, http_client=http_client)
+                    run_monitoring_cycle(
+                        seen_ids,
+                        dry_run=args.dry_run,
+                        scraper_session=scraper_session,
+                        http_client=http_client,
+                        max_pages=args.max_pages
+                    )
                 except Exception as e:
                     logger.error(f"Unexpected error in monitoring cycle: {e}")
                 time.sleep(args.interval)
