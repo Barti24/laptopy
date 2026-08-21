@@ -50,17 +50,29 @@ def save_seen_ids(seen_ids: Set[str], cache_file: str = SEEN_CACHE_FILE) -> None
     except Exception as e:
         logger.error(f"Error saving seen IDs to cache file {cache_file}: {e}")
 
-def passes_pre_filter(listing: Listing, max_price: float) -> bool:
-    """Check if listing price is below category limit and contains at least one fault keyword."""
+def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float = 0.0) -> bool:
+    """
+    Hybrid pre-filter logic:
+    1. Must not exceed category max_price limit.
+    2. Passes to AI evaluation if:
+       a) Price is below cheap_threshold (auto-pass without keyword requirement), OR
+       b) Title/Description contains at least one fault keyword root.
+    """
     if listing.price > max_price:
         logger.info(f"Skipping [{listing.id}] - Price {listing.price} PLN exceeds category max limit {max_price} PLN.")
         return False
 
+    # Condition A: Very cheap item auto-pass
+    if cheap_threshold > 0 and listing.price < cheap_threshold:
+        logger.info(f"Pre-filter AUTO-PASS [{listing.id}] - Price {listing.price} PLN < cheap threshold {cheap_threshold} PLN.")
+        return True
+
+    # Condition B: Keyword matching
     text_to_check = f"{listing.title} {listing.description}".lower()
     has_fault_keyword = any(kw.lower() in text_to_check for kw in FAULT_KEYWORDS)
 
     if not has_fault_keyword:
-        logger.info(f"Skipping [{listing.id}] - Title/Description does not contain any fault/damage keyword.")
+        logger.info(f"Skipping [{listing.id}] - Price {listing.price} PLN >= cheap threshold {cheap_threshold} PLN and title/description lacks fault keyword root.")
         return False
 
     return True
@@ -72,7 +84,7 @@ def run_monitoring_cycle(
     http_client: httpx.Client = None,
     max_pages: int = MAX_PAGES_PER_CATEGORY
 ) -> List[Listing]:
-    """Execute a single cycle of deep-scan fetching across categories (Vinted), pre-filtering, evaluating repairs, and notifying."""
+    """Execute a single cycle of deep-scan fetching across categories (Vinted), hybrid pre-filtering, evaluating repairs, and notifying."""
     logger.info("Starting multi-category electronics deep-scan monitoring cycle (Vinted)...")
 
     new_candidates_to_eval: List[Listing] = []
@@ -88,6 +100,7 @@ def run_monitoring_cycle(
         )
 
         max_price = cat_config.get("max_price", 999999.0)
+        cheap_threshold = cat_config.get("cheap_threshold", 0.0)
 
         cat_new_candidates = 0
         for item in scraped_items:
@@ -97,16 +110,16 @@ def run_monitoring_cycle(
             # Ensure every examined item is recorded in seen_ids immediately
             seen_ids.add(item.id)
 
-            if passes_pre_filter(item, max_price=max_price):
+            if passes_pre_filter(item, max_price=max_price, cheap_threshold=cheap_threshold):
                 new_candidates_to_eval.append(item)
                 cat_new_candidates += 1
 
-        logger.info(f"[{cat_name}] {len(scraped_items)} items retrieved, {cat_new_candidates} passed pre-filter for LLM evaluation.")
+        logger.info(f"[{cat_name}] {len(scraped_items)} items retrieved, {cat_new_candidates} passed hybrid pre-filter for LLM evaluation.")
 
     # Immediately persist updated seen_ids
     save_seen_ids(seen_ids)
 
-    logger.info(f"Found {len(new_candidates_to_eval)} total pre-filtered new listings to evaluate with Ollama AI.")
+    logger.info(f"Found {len(new_candidates_to_eval)} total hybrid pre-filtered new listings to evaluate with Ollama AI.")
 
     processed_listings = []
 
@@ -118,25 +131,30 @@ def run_monitoring_cycle(
             evaluation = EvaluationResult(
                 item_title=listing.title,
                 category=listing.category,
-                detected_fault="[DRY-RUN Mock] Brak zasilania / usterka kosmetyczna",
+                detected_fault="[DRY-RUN Mock] Usterka zasilania / obudowy",
                 difficulty_level="Prosta",
+                deal_score=8,
+                verdict="OKAZJA",
+                estimated_market_value=int(listing.price + 250),
+                estimated_repair_cost=30,
                 estimated_parts_cost_pln=30,
                 estimated_resale_price_pln=int(listing.price + 250),
                 net_profit_pln=190,
                 roi_percentage=110,
                 is_profitable=True,
-                recommendation_reason="[DRY-RUN Mock] Łatwa wymiana bezpiecznika/zasilacza, wysoki zysk netto."
+                reasoning="[DRY-RUN Mock] Bardzo dobry stosunek ceny do wartości rynkowej.",
+                recommendation_reason="[DRY-RUN Mock] Łatwa naprawa, wysoka opłacalność."
             )
         else:
             evaluation = evaluate_listing_with_ollama(listing, client=http_client)
 
         logger.info(
-            f"Result for {listing.id}: Net Profit={evaluation.net_profit_pln} PLN, ROI={evaluation.roi_percentage}%, "
-            f"Profitable={evaluation.is_profitable}, Fault='{evaluation.detected_fault}'"
+            f"Result for {listing.id}: Score={evaluation.deal_score}/10, Verdict='{evaluation.verdict}', "
+            f"Net Profit={evaluation.net_profit_pln} PLN, Profitable={evaluation.is_profitable}"
         )
 
-        if evaluation.is_profitable:
-            logger.info(f"🔥 HIGH PROFIT REPAIR CANDIDATE FOUND ({evaluation.net_profit_pln} PLN >= {PROFIT_THRESHOLD_PLN} PLN)! Dispatching notifications...")
+        if evaluation.is_profitable or evaluation.deal_score >= 5:
+            logger.info(f"🔥 CANDIDATE QUALIFIED FOR DISCORD ALERT ({evaluation.verdict} [{evaluation.deal_score}/10])! Dispatching notification...")
             if not dry_run:
                 notify_profitable_listing(listing, evaluation, client=http_client)
             else:
@@ -144,13 +162,12 @@ def run_monitoring_cycle(
 
         processed_listings.append(listing)
 
-    # Save final seen_ids state after evaluation loop
     save_seen_ids(seen_ids)
     logger.info("Monitoring cycle completed.")
     return processed_listings
 
 def main():
-    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted Deep Scan)")
+    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted Hybrid Pre-Filter)")
     parser.add_argument("--once", action="store_true", help="Run a single check cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Run without calling Ollama API or sending webhooks")
     parser.add_argument("--interval", type=int, default=FETCH_INTERVAL_SECONDS, help="Fetch interval in seconds")

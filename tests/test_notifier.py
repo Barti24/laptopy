@@ -4,29 +4,31 @@ import httpx
 from models import Listing, EvaluationResult
 from notifier import send_discord_notification, send_telegram_notification, notify_profitable_listing
 
-def test_send_discord_notification_profitable_green():
+def test_send_discord_notification_okazja_green():
     listing = Listing(
-        id="olx_100",
+        id="vinted_100",
         title="Ender 3 Pro zatkana dysza",
         price=200.0,
         currency="PLN",
-        description="Drukarka 3D włącza się, dysza zatkana.",
-        url="https://olx.pl/d/100",
-        platform="OLX",
+        description="Drukarka 3D z zatkanym ekstruderem.",
+        url="https://vinted.pl/items/100",
+        platform="Vinted",
         category="Drukarki 3D",
-        image_url="https://img.olx.pl/100.jpg"
+        image_url="https://images.vinted.net/100.jpg"
     )
     evaluation = EvaluationResult(
         item_title="Ender 3 Pro",
         category="Drukarki 3D",
-        detected_fault="Zatkana dysza hotend",
+        detected_fault="Zatkana dysza",
         difficulty_level="Prosta",
-        estimated_parts_cost_pln=20,
-        estimated_market_value_working_pln=450,
-        net_profit_pln=215,
-        roi_percentage=91,
+        deal_score=9,
+        verdict="OKAZJA",
+        estimated_market_value=500,
+        estimated_repair_cost=20,
+        net_profit_pln=250,
+        roi_percentage=100,
         is_profitable=True,
-        recommendation_reason="Prosta wymiana hotendu daje wysoki zysk netto."
+        reasoning="Świetna marża przy prostej wymianie części."
     )
 
     captured_requests = []
@@ -37,9 +39,7 @@ def test_send_discord_notification_profitable_green():
         assert "embeds" in data
         embed = data["embeds"][0]
         assert embed["color"] == 3066993  # Green
-        assert "Ender 3 Pro" in embed["title"]
-        assert "Zatkana dysza hotend" in embed["fields"][0]["value"]
-        assert embed["fields"][5]["value"] == "**215 PLN**"
+        assert "OKAZJA [9/10]" in embed["title"]
         return httpx.Response(204)
 
     client = httpx.Client(transport=httpx.MockTransport(mock_handler))
@@ -47,7 +47,7 @@ def test_send_discord_notification_profitable_green():
     assert success is True
     assert len(captured_requests) == 1
 
-def test_send_discord_notification_risky_yellow():
+def test_send_discord_notification_obserwuj_yellow():
     listing = Listing(
         id="vinted_200",
         title="Amplituner Yamaha trzeszczy kanał",
@@ -61,20 +61,23 @@ def test_send_discord_notification_risky_yellow():
     evaluation = EvaluationResult(
         item_title="Amplituner Yamaha",
         category="Sprzęt Audio",
-        detected_fault="Uszkodzony potencjometr lub kondensatory",
+        detected_fault="Trzeszczący potencjometr",
         difficulty_level="Średnia",
-        estimated_parts_cost_pln=40,
-        estimated_market_value_working_pln=280,
-        net_profit_pln=75,
-        roi_percentage=36,
-        is_profitable=False,  # Profit < 100 PLN
-        recommendation_reason="Niska marża, ryzyko większej usterki w torze audio."
+        deal_score=6,
+        verdict="OBSERWUJ",
+        estimated_market_value=300,
+        estimated_repair_cost=30,
+        net_profit_pln=90,
+        roi_percentage=42,
+        is_profitable=True,
+        reasoning="Ciekawa oferta warta obserwacji."
     )
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
         data = json.loads(request.content.decode("utf-8"))
         embed = data["embeds"][0]
-        assert embed["color"] == 16776960  # Yellow for non-profitable / risky
+        assert embed["color"] == 16776960  # Yellow for OBSERWUJ
+        assert "OBSERWUJ [6/10]" in embed["title"]
         return httpx.Response(204)
 
     client = httpx.Client(transport=httpx.MockTransport(mock_handler))
@@ -97,12 +100,14 @@ def test_send_telegram_notification_success():
         category="Sprzęt Audio",
         detected_fault="Brak dźwięku na wyjściu",
         difficulty_level="Średnia",
-        estimated_parts_cost_pln=30,
-        estimated_market_value_working_pln=300,
-        net_profit_pln=155,
-        roi_percentage=106,
+        deal_score=8,
+        verdict="OKAZJA",
+        estimated_market_value=300,
+        estimated_repair_cost=30,
+        net_profit_pln=140,
+        roi_percentage=87,
         is_profitable=True,
-        recommendation_reason="Opłacalna wymiana przekaźnika głośnikowego."
+        reasoning="Opłacalna wymiana przekaźnika."
     )
 
     def mock_handler(request: httpx.Request) -> httpx.Response:
