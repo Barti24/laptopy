@@ -1,15 +1,29 @@
 import re
 import json
 import logging
-from typing import List
-import httpx
+from typing import List, Optional
 from bs4 import BeautifulSoup
+from curl_cffi import requests as curl_requests
 from models import Listing
 from config import DEFAULT_HEADERS
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OLX_URL = "https://www.olx.pl/elektronika/komputery/laptopy/"
+
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1"
+}
 
 def parse_olx_html(html_content: str, category: str = "Inne") -> List[Listing]:
     """Parse HTML content or embedded __PRERENDERED_STATE__ JSON from OLX search page."""
@@ -114,15 +128,15 @@ def parse_olx_html(html_content: str, category: str = "Inne") -> List[Listing]:
 
     return listings
 
-def fetch_olx_listings(client: httpx.Client = None, url: str = DEFAULT_OLX_URL, category: str = "Inne") -> List[Listing]:
-    """Fetch listings from OLX for a given category URL."""
+def fetch_olx_listings(session: Optional[curl_requests.Session] = None, url: str = DEFAULT_OLX_URL, category: str = "Inne") -> List[Listing]:
+    """Fetch listings from OLX using curl_cffi with chrome120 impersonation to bypass 403."""
     should_close = False
-    if client is None:
-        client = httpx.Client(headers=DEFAULT_HEADERS, timeout=10.0, follow_redirects=True)
+    if session is None:
+        session = curl_requests.Session(impersonate="chrome120")
         should_close = True
 
     try:
-        response = client.get(url)
+        response = session.get(url, headers=BROWSER_HEADERS, timeout=15)
         response.raise_for_status()
         return parse_olx_html(response.text, category=category)
     except Exception as e:
@@ -130,4 +144,4 @@ def fetch_olx_listings(client: httpx.Client = None, url: str = DEFAULT_OLX_URL, 
         return []
     finally:
         if should_close:
-            client.close()
+            session.close()

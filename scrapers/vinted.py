@@ -1,12 +1,17 @@
 import logging
-from typing import List, Dict, Any
-import httpx
+from typing import List, Dict, Any, Optional
+from curl_cffi import requests as curl_requests
 from models import Listing
-from config import DEFAULT_HEADERS
 
 logger = logging.getLogger(__name__)
 
 VINTED_API_URL = "https://www.vinted.pl/api/v2/catalog/items"
+
+VINTED_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
+}
 
 def parse_vinted_json(data: Dict[str, Any], category: str = "Inne") -> List[Listing]:
     """Parse JSON response from Vinted catalog API."""
@@ -58,19 +63,27 @@ def parse_vinted_json(data: Dict[str, Any], category: str = "Inne") -> List[List
 
     return listings
 
-def fetch_vinted_listings(client: httpx.Client = None, search_text: str = "laptop", category: str = "Inne") -> List[Listing]:
-    """Fetch listings from Vinted API for a specific search query and category."""
+def fetch_vinted_listings(
+    session: Optional[curl_requests.Session] = None,
+    search_text: str = "laptop",
+    category: str = "Inne"
+) -> List[Listing]:
+    """Fetch listings from Vinted API using curl_cffi with session initialization (obtaining _vinted_fr_session cookies)."""
     should_close = False
-    if client is None:
-        client = httpx.Client(headers=DEFAULT_HEADERS, timeout=10.0, follow_redirects=True)
+    if session is None:
+        session = curl_requests.Session(impersonate="chrome120")
         should_close = True
 
     try:
+        # Step 1: Visit main page to obtain cookies (_vinted_fr_session)
         try:
-            client.get("https://www.vinted.pl/")
+            init_headers = dict(VINTED_HEADERS)
+            init_headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+            session.get("https://www.vinted.pl/", headers=init_headers, timeout=15)
         except Exception as e:
             logger.debug(f"Vinted initial session request warning: {e}")
 
+        # Step 2: Request catalog items API with full headers
         params = {
             "search_text": search_text,
             "order": "newest_first",
@@ -78,7 +91,7 @@ def fetch_vinted_listings(client: httpx.Client = None, search_text: str = "lapto
             "per_page": 20
         }
 
-        response = client.get(VINTED_API_URL, params=params)
+        response = session.get(VINTED_API_URL, params=params, headers=VINTED_HEADERS, timeout=15)
         response.raise_for_status()
         return parse_vinted_json(response.json(), category=category)
     except Exception as e:
@@ -86,4 +99,4 @@ def fetch_vinted_listings(client: httpx.Client = None, search_text: str = "lapto
         return []
     finally:
         if should_close:
-            client.close()
+            session.close()

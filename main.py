@@ -6,13 +6,13 @@ import sys
 import time
 from typing import Set, List
 import httpx
+from curl_cffi import requests as curl_requests
 
 from config import (
     FETCH_INTERVAL_SECONDS,
     SEEN_CACHE_FILE,
     PROFIT_THRESHOLD_PLN,
     OLLAMA_MODEL,
-    DEFAULT_HEADERS,
     CATEGORIES
 )
 from models import Listing, EvaluationResult
@@ -51,7 +51,8 @@ def save_seen_ids(seen_ids: Set[str], cache_file: str = SEEN_CACHE_FILE) -> None
 def run_monitoring_cycle(
     seen_ids: Set[str],
     dry_run: bool = False,
-    client: httpx.Client = None
+    scraper_session: curl_requests.Session = None,
+    http_client: httpx.Client = None
 ) -> List[Listing]:
     """Execute a single cycle of fetching across categories, evaluating repairs, and notifying."""
     logger.info("Starting multi-category electronics monitoring cycle...")
@@ -60,8 +61,8 @@ def run_monitoring_cycle(
 
     for cat_name, cat_config in CATEGORIES.items():
         logger.info(f"Scanning category: {cat_name}...")
-        olx_items = fetch_olx_listings(client=client, url=cat_config["olx_url"], category=cat_name)
-        vinted_items = fetch_vinted_listings(client=client, search_text=cat_config["vinted_search"], category=cat_name)
+        olx_items = fetch_olx_listings(session=scraper_session, url=cat_config["olx_url"], category=cat_name)
+        vinted_items = fetch_vinted_listings(session=scraper_session, search_text=cat_config["vinted_search"], category=cat_name)
         logger.info(f"[{cat_name}] Fetched {len(olx_items)} from OLX, {len(vinted_items)} from Vinted.")
         all_listings.extend(olx_items + vinted_items)
 
@@ -89,7 +90,7 @@ def run_monitoring_cycle(
                 recommendation_reason="[DRY-RUN Mock] Łatwa wymiana bezpiecznika/zasilacza, wysoki zysk netto."
             )
         else:
-            evaluation = evaluate_listing_with_ollama(listing, client=client)
+            evaluation = evaluate_listing_with_ollama(listing, client=http_client)
 
         logger.info(
             f"Result for {listing.id}: Net Profit={evaluation.net_profit_pln} PLN, ROI={evaluation.roi_percentage}%, "
@@ -99,7 +100,7 @@ def run_monitoring_cycle(
         if evaluation.is_profitable:
             logger.info(f"🔥 HIGH PROFIT REPAIR CANDIDATE FOUND ({evaluation.net_profit_pln} PLN >= {PROFIT_THRESHOLD_PLN} PLN)! Dispatching notifications...")
             if not dry_run:
-                notify_profitable_listing(listing, evaluation, client=client)
+                notify_profitable_listing(listing, evaluation, client=http_client)
             else:
                 logger.info(f"[DRY-RUN] Would send notification for {listing.title}")
 
@@ -121,14 +122,14 @@ def main():
     seen_ids = load_seen_ids()
     logger.info(f"Loaded {len(seen_ids)} previously seen listing IDs.")
 
-    with httpx.Client(headers=DEFAULT_HEADERS, timeout=30.0, follow_redirects=True) as client:
+    with curl_requests.Session(impersonate="chrome120") as scraper_session, httpx.Client(timeout=30.0) as http_client:
         if args.once:
-            run_monitoring_cycle(seen_ids, dry_run=args.dry_run, client=client)
+            run_monitoring_cycle(seen_ids, dry_run=args.dry_run, scraper_session=scraper_session, http_client=http_client)
         else:
             logger.info(f"Running continuously with {args.interval} seconds interval...")
             while True:
                 try:
-                    run_monitoring_cycle(seen_ids, dry_run=args.dry_run, client=client)
+                    run_monitoring_cycle(seen_ids, dry_run=args.dry_run, scraper_session=scraper_session, http_client=http_client)
                 except Exception as e:
                     logger.error(f"Unexpected error in monitoring cycle: {e}")
                 time.sleep(args.interval)

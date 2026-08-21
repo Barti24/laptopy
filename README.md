@@ -4,6 +4,14 @@ Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sp
 
 ---
 
+## 🛡️ Obejście Blokad 403 (curl_cffi & Chrome Impersonation)
+
+Skrapery wykorzystują bibliotekę **`curl_cffi`** z opcją `impersonate="chrome120"` oraz symulacją pełnego TLS fingerprinting i nagłówków przeglądarki Chrome do bezproblemowego pobierania ogłoszeń bez blokad HTTP 403:
+- **Vinted**: Posiada mechanizm wstępnego pobierania ciasteczek sesyjnych (`_vinted_fr_session`) z adresu `https://www.vinted.pl/` przed wykonaniem zapytania do API `/api/v2/catalog/items`.
+- **OLX**: Pobiera i parsuje osadzone dane `__PRERENDERED_STATE__` lub strukturę HTML DOM z pełnymi nagłówkami przeglądarki.
+
+---
+
 ## 🚀 Wszechstronne Kategorie Elektroniki
 
 Skrypt obsługuje słowa kluczowe i dedykowane filtry wyszukiwania dla wielu kategorii urządzeń:
@@ -62,6 +70,7 @@ Powiadomienia na Discordzie wysyłane są w formie estetycznych kart Embed:
 
 ### 1. Wymagania
 - Python 3.10+
+- Environment POSIX (Linux / Docker / Proxmox LXC)
 - [Ollama](https://ollama.com/) z pobranym modelem `qwen2.5:14b`:
   ```bash
   ollama pull qwen2.5:14b
