@@ -1,8 +1,8 @@
 import os
 
-# Ollama API settings
+# Ollama API settings (allows MODEL_NAME or OLLAMA_MODEL environment variable, defaults to qwen2.5:7b)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
+OLLAMA_MODEL = os.getenv("MODEL_NAME", os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
 
 # Flipping & Repair evaluation thresholds
 PROFIT_THRESHOLD_FLIP_PLN = float(os.getenv("PROFIT_THRESHOLD_FLIP_PLN", "80.0"))
@@ -24,7 +24,7 @@ DEFAULT_HEADERS = {
 # Cache file path for seen listings
 SEEN_CACHE_FILE = os.getenv("SEEN_CACHE_FILE", "seen_listings.json")
 
-# Expanded fault keywords roots for hybrid pre-filtering (case-insensitive)
+# Pre-filtering keywords for fault/damage detection (case-insensitive)
 FAULT_KEYWORDS = [
     "uszkodz",
     "zepsut",
@@ -50,6 +50,23 @@ FAULT_KEYWORDS = [
     "skaza",
     "część",
     "stan"
+]
+
+# Pre-filtering exclusion keywords for laptop spare parts / components
+EXCLUDE_PARTS = [
+    "ram",
+    "procesor",
+    "processzorok",
+    "cpu",
+    "dysk",
+    "ssd",
+    "hdd",
+    "matryca",
+    "płyta główna",
+    "plyta glowna",
+    "obudowa",
+    "klawiatura do",
+    "bateria do"
 ]
 
 # Multi-category electronics configuration with raised max_price limits and cheap auto-pass thresholds

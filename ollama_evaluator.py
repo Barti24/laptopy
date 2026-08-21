@@ -80,7 +80,7 @@ def evaluate_listing_with_ollama(
     profit_threshold_repair: float = PROFIT_THRESHOLD_REPAIR_PLN,
     shipping_cost: float = SHIPPING_COST_PLN
 ) -> EvaluationResult:
-    """Send listing details to Ollama API (Qwen 2.5) for dual deal analysis (OKAZJA_FLIP vs OKAZJA_NAPRAWA)."""
+    """Send listing details to Ollama API for dual deal analysis with 600.0s timeout and generation options."""
     user_prompt = f"""Przeanalizuj poniższe ogłoszenie pod kątem dwóch typów okazji (Czysty Flip vs Sprzęt Do Naprawy):
 
 Kategoria: {listing.category}
@@ -98,17 +98,22 @@ Opis:
             {"role": "user", "content": user_prompt}
         ],
         "format": "json",
+        "options": {
+            "num_predict": 300,
+            "temperature": 0.1,
+            "stop": ["}\n", "}]"]
+        },
         "stream": False
     }
 
     should_close = False
     if client is None:
-        client = httpx.Client(timeout=None)
+        client = httpx.Client(timeout=600.0)
         should_close = True
 
     try:
         api_endpoint = f"{ollama_url.rstrip('/')}/api/chat"
-        response = client.post(api_endpoint, json=payload, timeout=None)
+        response = client.post(api_endpoint, json=payload, timeout=600.0)
         response.raise_for_status()
 
         response_data = response.json()
@@ -201,9 +206,7 @@ Opis:
 
         reasoning = str(data.get("reasoning") or data.get("recommendation_reason") or "Brak uzasadnienia")
 
-        # Python qualification criteria logic for Discord alerts:
-        # For "OKAZJA_FLIP": net_profit >= 80 PLN
-        # For "OKAZJA_NAPRAWA": net_profit >= 100 PLN (after parts cost)
+        # Qualification criteria logic
         is_profitable = False
         if deal_type == "OKAZJA_FLIP" and calculated_net_profit >= profit_threshold_flip:
             is_profitable = True
@@ -240,6 +243,27 @@ Opis:
             reasoning=reasoning
         )
 
+    except (httpx.TimeoutException, httpx.RequestError) as e:
+        logger.warning(f"Ollama API request timed out or encountered network error for {listing.id} (600s limit): {e}. Skipping item.")
+        return EvaluationResult(
+            item_title=listing.title,
+            category=listing.category,
+            deal_type="BRAK_ZYSKU",
+            deal_score=1,
+            estimated_market_value=int(listing.price),
+            estimated_parts_cost=0,
+            estimated_net_profit=0,
+            roi_percentage=0,
+            negotiation_target=int(listing.price),
+            market_liquidity="NISKA PŁYNNOŚĆ",
+            risk_assessment="WYSOKIE - Przekroczono limit czasu Ollama (10 min)",
+            salvage_value=0,
+            fault_analysis="Przekroczono limit czasu odpowiedzi Ollama (10 min)",
+            repair_difficulty="TRUDNA",
+            repair_steps=["Przekroczono limit czasu"],
+            is_profitable=False,
+            reasoning=f"Przekroczono limit czasu odpowiedzi Ollama API (10 minut): {e}"
+        )
     except Exception as e:
         logger.error(f"Error evaluating listing {listing.id} via Ollama API: {e}")
         return EvaluationResult(

@@ -1,35 +1,50 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z hybrydową pre-filtracją ofert, przyrostowym skanowaniem historii (Deep Scan) oraz ustrukturyzowaną analizą rzeczoznawczą dla dwóch typów okazji przy użyciu **Ollama (Qwen 2.5)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z dwustopniową pre-filtracją ofert (wykluczanie części zamiennych i obudów), przyrostowym skanowaniem historii (Deep Scan) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
 
 ---
 
-## ⚡ Hybrydowa Pre-Filtracja Ofert (Przed zapytaniem do AI)
+## ⚡ Hybrydowa Pre-Filtracja Ofert z Wykluczeniem Części
 
-Aby zmaksymalizować wyłapywanie okazji i oszczędzać moc obliczeniową, oferta przekazywana jest do oceny przez Ollamę, jeśli mieści się w cenie maksymalnej ORAZ spełnia przynajmniej **JEDEN** z warunków:
+Przed przekazaniem oferty do analizy AI, kod Pythona wykonuje szybki przesiew:
 
-1. **Jest ofertą bardzo tanią (AUTO-PASS)**:
-   - Laptopy: **< 250 PLN** (max 1200 PLN)
-   - Konsole: **< 150 PLN** (max 900 PLN)
-   - Karty graficzne: **< 150 PLN** (max 1000 PLN)
-   - Drukarki 3D: **< 200 PLN** (max 800 PLN)
-   - Sprzęt Audio: **< 150 PLN** (max 600 PLN)
-2. **Zawiera w tytule lub opisie rdzeń słowa kluczowego usterki (`FAULT_KEYWORDS`)**:
-   `["uszkodz", "zepsut", "nietest", "dawc", "napraw", "brak", "wada", "wadliw", "pękn", "zalaw", "zalani", "restart", "nie włącza", "nie wlacz", "nie dziala", "nie działa", "rozbit", "spalon", "hasło", "bios", "artefakt", "skaza", "część", "stan"]`
+1. **Limit Ceny Maksymalnej (`max_price`) per kategoria**:
+   - Laptopy: max **1200 PLN**
+   - Konsole: max **900 PLN**
+   - Karty graficzne: max **1000 PLN**
+   - Drukarki 3D: max **800 PLN**
+   - Sprzęt Audio: max **600 PLN**
+2. **Wykluczenie Części i Komponentów (`EXCLUDE_PARTS`)**:
+   Dla kategorii Laptopy odrzucane są ogłoszenia dotyczące samych części zamiennych, takich jak: `["ram", "procesor", "processzorok", "cpu", "dysk", "ssd", "hdd", "matryca", "płyta główna", "plyta glowna", "obudowa", "klawiatura do", "bateria do"]`.
+3. **Warunki kwalifikacji do AI**:
+   - **Tanie oferty (AUTO-PASS)**: Laptopy < 250 PLN, Konsole < 150 PLN, Karty graficzne < 150 PLN, Drukarki 3D < 200 PLN, Sprzęt Audio < 150 PLN.
+   - **Lub Słowa Kluczowe Usterek (`FAULT_KEYWORDS`)**: np. `uszkodz`, `zepsut`, `nietest`, `dawc`, `napraw`, `brak`, `wada`, `pękn`, `zalaw`, `nie włącza`, `artefakt`, `hasło`, `bios`, `część`, `stan`.
 
 ---
 
-## 🧠 Klasyfikacja i Wycena Rzeczoznawcza przez Ollama (Qwen 2.5)
+## ⚙️ Konfiguracja Ollama (`qwen2.5:7b`) i Limit Cansu (600s)
 
-Model Qwen 2.5 dokonywuje dokładnej oceny i klasyfikuje ofertę do jednego z dwóch typów okazji:
+- **Model Domyślny**: `qwen2.5:7b` (możliwość nadpisania przez zmienną środowiskową `MODEL_NAME` lub `OLLAMA_MODEL`).
+- **Limit Czasu**: Usługa HTTP korzysta ze sztywnego limitu `timeout=600.0` (10 minut). W przypadku przekroczenia czasu zapytanie jest bezpiecznie pomijane (`httpx.TimeoutException`), logowane i skrypt przechodzi do kolejnej oferty.
+- **Parametry Generowania**:
+  ```json
+  "options": {
+      "num_predict": 300,
+      "temperature": 0.1,
+      "stop": ["}\n", "}]"]
+  }
+  ```
+
+---
+
+## 🧠 Klasyfikacja i Wycena Rzeczoznawcza
+
+Model Qwen 2.5 dokonywuje oceny i klasyfikuje ofertę do jednego z dwóch typów okazji:
 
 1. 🎯 **`OKAZJA_FLIP` (Czysty Flip)**:
-   - Sprzęt sprawny/nowy sprzedawany bardzo tanio.
-   - Koszt części = 0 PLN.
-   - Wymagany zysk czysty: `estimated_net_profit >= 80 PLN`.
+   - Sprzęt sprawny/nowy sprzedawany bardzo tanio (net_profit >= 80 PLN).
 2. 🛠️ **`OKAZJA_NAPRAWA` (Sprzęt Do Naprawy)**:
-   - Sprzęt posiadający wadę, uszkodzenie lub brak części z potencjałem zysku po naprawie.
-   - Wymagany zysk czysty po potrąceniu kosztów części i 20 PLN wysyłki: `estimated_net_profit >= 100 PLN`.
+   - Sprzęt z wadą lub brakiem części (net_profit >= 100 PLN po potrąceniu kosztów części i 20 PLN wysyłki).
 
 ### 📋 JSON Schema Odpowiedzi:
 ```json
@@ -54,14 +69,14 @@ Model Qwen 2.5 dokonywuje dokładnej oceny i klasyfikuje ofertę do jednego z dw
 
 ---
 
-## 🔔 Bogate Powiadomienia Discord
+## 🔔 Powiadomienia Discord & Telegram
 
-Powiadomienia na Discordzie wysyłane są w ustrukturyzowanym szablonie zawierającym sekcje:
+Powiadomienia na Discordzie wysyłane są w ustrukturyzowanym szablonie:
 - 🎯 **[CZYSTY FLIP]** lub 🛠️ **[DO NAPRAWY]**
 - 💰 **Finanse:** Cena Vinted | Cena Rynkowa | Szacowany Zysk Czysty (ROI %)
 - 🎯 **Strategia:** Sugerowana oferta negocjacyjna na Vinted | Płynność rynku
-- 🛠️ **Diagnoza i Plan:** (sekcja widoczna dla sprzętu do naprawy) Diagnoza | Trudność | Koszt części | Plan
-- 🛡️ **Ryzyko i Plan B:** Poziom ryzyka | Wartość na części (Plan B / dawca) | Uzasadnienie Qwen 2.5
+- 🛠️ **Diagnoza i Plan:** Diagnoza | Trudność | Koszt części | Plan
+- 🛡️ **Ryzyko i Plan B:** Poziom ryzyka | Wartość na części (Plan B) | Uzasadnienie Qwen 2.5
 
 ---
 
@@ -70,9 +85,9 @@ Powiadomienia na Discordzie wysyłane są w ustrukturyzowanym szablonie zawieraj
 ### 1. Wymagania
 - Python 3.10+
 - Środowisko POSIX (Linux / Docker / Proxmox LXC)
-- [Ollama](https://ollama.com/) z pobranym modelem `qwen2.5:14b`:
+- [Ollama](https://ollama.com/) z pobranym modelem `qwen2.5:7b`:
   ```bash
-  ollama pull qwen2.5:14b
+  ollama pull qwen2.5:7b
   ```
 
 ### 2. Instalacja zależności

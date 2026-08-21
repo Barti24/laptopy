@@ -15,7 +15,8 @@ from config import (
     PROFIT_THRESHOLD_REPAIR_PLN,
     OLLAMA_MODEL,
     CATEGORIES,
-    FAULT_KEYWORDS
+    FAULT_KEYWORDS,
+    EXCLUDE_PARTS
 )
 from models import Listing, EvaluationResult
 from scrapers.vinted import fetch_vinted_listings_deep
@@ -55,13 +56,22 @@ def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float
     """
     Hybrid pre-filter logic:
     1. Must not exceed category max_price limit.
-    2. Passes to AI evaluation if:
+    2. For 'Laptopy', title must NOT contain spare parts keywords (EXCLUDE_PARTS).
+    3. Passes to AI evaluation if:
        a) Price is below cheap_threshold (auto-pass without keyword requirement), OR
        b) Title/Description contains at least one fault keyword root.
     """
     if listing.price > max_price:
         logger.info(f"Skipping [{listing.id}] - Price {listing.price} PLN exceeds category max limit {max_price} PLN.")
         return False
+
+    # Check for excluded laptop components/parts
+    if listing.category == "Laptopy":
+        title_lower = listing.title.lower()
+        for part in EXCLUDE_PARTS:
+            if part in title_lower:
+                logger.info(f"Skipping Laptop [{listing.id}] - Title '{listing.title}' contains excluded component keyword '{part}'.")
+                return False
 
     # Condition A: Very cheap item auto-pass
     if cheap_threshold > 0 and listing.price < cheap_threshold:
@@ -182,7 +192,7 @@ def main():
     seen_ids = load_seen_ids()
     logger.info(f"Loaded {len(seen_ids)} previously seen listing IDs.")
 
-    with curl_requests.Session(impersonate="chrome120") as scraper_session, httpx.Client(timeout=None) as http_client:
+    with curl_requests.Session(impersonate="chrome120") as scraper_session, httpx.Client(timeout=600.0) as http_client:
         if args.once:
             run_monitoring_cycle(
                 seen_ids,
