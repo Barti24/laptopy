@@ -4,6 +4,9 @@ import os
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("MODEL_NAME", os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
 
+# Optional Proxy settings for scrapers (e.g. "http://user:pass@host:port" or "socks5://host:port")
+PROXY_URL = os.getenv("PROXY_URL", "")
+
 # Flipping & Repair evaluation thresholds
 PROFIT_THRESHOLD_FLIP_PLN = float(os.getenv("PROFIT_THRESHOLD_FLIP_PLN", "80.0"))
 PROFIT_THRESHOLD_REPAIR_PLN = float(os.getenv("PROFIT_THRESHOLD_REPAIR_PLN", "100.0"))

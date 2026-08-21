@@ -5,12 +5,27 @@ from typing import List, Dict, Any, Optional, Set
 from curl_cffi import requests as curl_requests
 from curl_cffi.requests.exceptions import RequestException, HTTPError
 from models import Listing
+from config import PROXY_URL
 
 logger = logging.getLogger(__name__)
 
 VINTED_API_URL = "https://www.vinted.pl/api/v2/catalog/items"
 
-VINTED_HEADERS = {
+HOMEPAGE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1"
+}
+
+API_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -26,18 +41,21 @@ VINTED_HEADERS = {
 MAX_PAGES_DEFAULT = 5
 MAX_403_RETRIES = 2
 
+def create_vinted_session() -> curl_requests.Session:
+    """Create a new curl_cffi Session with Chrome 120 TLS impersonation and optional proxy."""
+    session = curl_requests.Session(impersonate="chrome120")
+    if PROXY_URL:
+        session.proxies = {
+            "http": PROXY_URL,
+            "https": PROXY_URL
+        }
+    return session
+
 def bootstrap_vinted_session(session: curl_requests.Session) -> bool:
-    """Visit Vinted homepage to obtain fresh session cookies and CSRF headers."""
+    """Visit Vinted homepage to obtain fresh session cookies and CSRF headers using full Chrome navigation headers."""
     logger.info("Bootstrapping Vinted session cookies from https://www.vinted.pl/...")
     try:
-        init_headers = dict(VINTED_HEADERS)
-        init_headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-        init_headers["Sec-Fetch-Dest"] = "document"
-        init_headers["Sec-Fetch-Mode"] = "navigate"
-        init_headers["Sec-Fetch-Site"] = "none"
-        init_headers["Sec-Fetch-User"] = "?1"
-
-        response = session.get("https://www.vinted.pl/", headers=init_headers, timeout=15)
+        response = session.get("https://www.vinted.pl/", headers=HOMEPAGE_HEADERS, timeout=15)
         response.raise_for_status()
         logger.info("Successfully bootstrapped Vinted session cookies.")
         return True
@@ -102,10 +120,10 @@ def fetch_vinted_listings(
     page: int = 1,
     per_page: int = 20
 ) -> List[Listing]:
-    """Fetch a single page of listings from Vinted API with cookie bootstrapping and 403 retries."""
+    """Fetch a single page of listings from Vinted API with cookie bootstrapping, proxy support, and 403 retries."""
     should_close = False
     if session is None:
-        session = curl_requests.Session(impersonate="chrome120")
+        session = create_vinted_session()
         should_close = True
 
     try:
@@ -122,7 +140,7 @@ def fetch_vinted_listings(
 
         for attempt in range(MAX_403_RETRIES + 1):
             try:
-                response = session.get(VINTED_API_URL, params=params, headers=VINTED_HEADERS, timeout=15)
+                response = session.get(VINTED_API_URL, params=params, headers=API_HEADERS, timeout=15)
 
                 # If 403 Forbidden, refresh session cookies and retry
                 if response.status_code == 403 and attempt < MAX_403_RETRIES:
@@ -175,7 +193,7 @@ def fetch_vinted_listings_deep(
 
     should_close = False
     if session is None:
-        session = curl_requests.Session(impersonate="chrome120")
+        session = create_vinted_session()
         should_close = True
 
     all_scraped_listings: List[Listing] = []
