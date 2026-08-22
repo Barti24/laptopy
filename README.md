@@ -1,23 +1,20 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5 + Live Market Search)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z bezproblemową obsługą cookie bootstrappingu i retry w przypadku HTTP 403, wsparciem dla opcjonalnych serwerów Proxy (`PROXY_URL`), zoptymalizowaną wysoce wyczuloną pre-filtracją (auto-pass < 400 PLN), okresową ponowną analizą cen (Price Drop Re-evaluation), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search via `ddgs`) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z otwartą, nie-restrykcyjną pre-filtracją ofert, przyrostowym skanowaniem historii (Deep Scan), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search via `ddgs`) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
 
 ---
 
-## ⚡ Hybrydowa Pre-Filtracja Ofert (< 400 PLN Auto-Pass)
+## ⚡ Otwarta Pre-Filtracja Ofert (Brak Restrykcji Słów Kluczowych)
 
-Przed przekazaniem oferty do analizy AI, kod Pythona w funkcji `passes_pre_filter` wykonuje szybki przesiew według ściśle ustalonej kolejności:
+Aby maksymalnie wyłapywać okazje (zarówno czyste flipy taniego sprawnego sprzętu, jak i opłacalne urządzenia do naprawy), pre-filter w Pythonie realizuje otwarte przesiewanie:
 
-1. **Krok 1: Limit Ceny Maksymalnej (`max_price`)**:
-   - Laptopy: max **1200 PLN** | Konsole: max **900 PLN** | Karty graficzne: max **1000 PLN** | Drukarki 3D: max **800 PLN** | Audio: max **600 PLN**
-2. **Krok 2: BEZWZGLĘDNE CZARNE LISTY (Przed Auto-Pass!)**:
+1. **Limit Ceny Maksymalnej (`max_price`)**:
+   - Laptopy: max **1500 PLN** | Konsole: max **1200 PLN** | Karty graficzne: max **1200 PLN** | Drukarki 3D: max **1000 PLN** | Audio: max **800 PLN**
+2. **Bezwzględne Czarnoliste Wykluczenia**:
    - **Zabawki i sprzęt dla dzieci (`EXCLUDE_TOYS`)**: `["edukacyjny", "edykacyjny", "zabawka", "zabawkowy", "dla dzieci", "interaktywny", "fisher price", "hello kitty", "barbie"]`.
    - **Komponenty i części laptopowe (`EXCLUDE_PARTS`)**: `["ram", "procesor", "processzorok", "cpu", "dysk", "ssd", "hdd", "matryca", "płyta główna", "plyta glowna", "obudowa", "klawiatura do", "bateria do"]`.
-   - *Jeśli ogłoszenie zawiera słowo z czarnej listy, zostaje odrzucone NATYCHMIAST.*
-3. **Krok 3: Tanie oferty (AUTO-PASS dla sprzętu < 400 PLN)**:
-   - Wszystkie nieznajdujące się na czarnej liście urządzenia o cenie **poniżej 400 PLN** automatycznie przechodzą do szczegółowej wyceny przez Ollamę.
-4. **Krok 4: Słowa Kluczowe Usterek dla droższych ofert (`FAULT_KEYWORDS`)**:
-   - Dla ofert >= 400 PLN wymagane jest przynajmniej jedno ze słów kluczowych usterek (`uszkodz`, `zepsut`, `nietest`, `dawc`, `napraw`, `brak`, `wada`, `pękn`, `zalaw`, `nie włącza`, `artefakt`, `hasło`, `bios`, `część`, `stan`).
+3. **Otwarta Ocena przez AI**:
+   - Wszystkie nieznajdujące się na czarnej liście urządzenia mieszczące się w cenie maksymalnej automatycznie przekazywane są do szczegółowej wyceny przez Ollamę. To model AI podejmuje decyzję o opłacalności.
 
 ---
 
@@ -28,12 +25,12 @@ Przed przekazaniem oferty do analizy AI, kod Pythona w funkcji `passes_pre_filte
 
 ---
 
-## ⏱️ Ograniczanie Natężenia Ruchu (3.0s – 7.0s Throttling & Jitter)
+## ⏱️ Ograniczanie Natężenia Ruchu i Zabezpieczenia (Rate-Limiting)
 
 1. **Czas Cyklu (`FETCH_INTERVAL_SECONDS = 600`)**: Częstotliwość uruchamiania pętli sprawdzania wynosi **10 minut** (600 sekund).
-2. **Głębokość Skanowania (`MAX_PAGES_PER_CATEGORY = 2`)**: Skanowanie obejmuje **2 strony per kategoria** w automatycznym cyklu.
+2. **Głębokość Skanowania (`MAX_PAGES_PER_CATEGORY = 3`)**: Skanowanie obejmuje do **3 stron per kategoria** w automatycznym cyklu.
 3. **Zdrowy Jitter**:
-   - Między stronami w danej kategorii: losowe opóźnienie **3.0s – 7.0s**.
+   - Między stronami w danej kategorii: losowe opóźnienie **1.5s – 3.0s**.
    - Między poszczególnymi kategoriami: losowe opóźnienie **3.0s – 7.0s**.
 4. **Przerwa Nocna (01:00 – 06:00)**: W godzinach 01:00–06:00 skrypt automatycznie pomija pętlę skanowania i uśnie na **30 minut** (`time.sleep(1800)`).
 

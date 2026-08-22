@@ -87,39 +87,34 @@ EXCLUDE_TOYS = [
     "barbie"
 ]
 
-# Multi-category electronics configuration with raised max_price limits and 400 PLN cheap auto-pass thresholds
+# Multi-category electronics configuration with broadened price limits
 CATEGORIES = {
     "Laptopy": {
-        "max_price": 1200.0,
-        "cheap_threshold": 400.0,
+        "max_price": 1500.0,
         "keywords": ["laptop", "thinkpad", "dell latitude", "uszkodzony", "brak dysku"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/laptopy/",
         "vinted_search": "laptop"
     },
     "Konsole": {
-        "max_price": 900.0,
-        "cheap_threshold": 400.0,
+        "max_price": 1200.0,
         "keywords": ["ps4", "xbox one", "switch", "nie czyta płyt", "głośno chodzi"],
         "olx_url": "https://www.olx.pl/elektronika/gry-konsole/",
         "vinted_search": "konsola"
     },
     "Karty graficzne": {
-        "max_price": 1000.0,
-        "cheap_threshold": 400.0,
+        "max_price": 1200.0,
         "keywords": ["rtx", "gtx", "rx", "artefakty", "przegrzewa się"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/czesci/karty-graficzne/",
         "vinted_search": "karta graficzna"
     },
     "Drukarki 3D": {
-        "max_price": 800.0,
-        "cheap_threshold": 400.0,
+        "max_price": 1000.0,
         "keywords": ["ender", "neptune", "zatkana", "brak serwa"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/drukarki-skanery/",
         "vinted_search": "drukarka 3d"
     },
     "Sprzęt Audio": {
-        "max_price": 600.0,
-        "cheap_threshold": 400.0,
+        "max_price": 800.0,
         "keywords": ["amplituner", "brak dźwięku", "trzeszczy", "uszkodzony kanał"],
         "olx_url": "https://www.olx.pl/elektronika/sprzet-audio/",
         "vinted_search": "amplituner"

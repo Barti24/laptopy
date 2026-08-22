@@ -9,28 +9,29 @@ def test_passes_pre_filter_exclude_toys_overrides_cheap_pass():
     listing = Listing(
         id="test_cheap_toy",
         title="Laptop zabaweczka fisher price edukacyjny dlay dzieci barbie",
-        price=15.0,  # Extremely cheap (< cheap_threshold), BUT matches toy blacklist!
+        price=15.0,  # Extremely cheap, BUT matches toy blacklist!
         currency="PLN",
         description="Grający komputerek interaktywny fisher price.",
         url="https://example.com/cheaptoy",
         platform="Vinted",
         category="Laptopy"
     )
-    # MUST be rejected at Step 2 despite price = 15 PLN < 250 PLN cheap_threshold
-    assert passes_pre_filter(listing, max_price=1200.0, cheap_threshold=250.0) is False
+    # MUST be rejected at Step 2 despite low price
+    assert passes_pre_filter(listing, max_price=1200.0) is False
 
-def test_passes_pre_filter_keyword_matching():
+def test_passes_pre_filter_open_gate_passes_clean_item():
     listing = Listing(
         id="test_1",
-        title="Laptop Lenovo ThinkPad T14 do naprawy uszkodzony ekran",
+        title="Laptop Lenovo ThinkPad T14 sprawny jak nowy",
         price=500.0,
         currency="PLN",
-        description="Laptop nie działa, zbity ekran.",
+        description="Laptop działa idealnie, stan świetny.",
         url="https://example.com/1",
         platform="Vinted",
         category="Laptopy"
     )
-    assert passes_pre_filter(listing, max_price=1200.0, cheap_threshold=250.0) is True
+    # Passes open pre-filter to Ollama AI evaluation even without fault keywords!
+    assert passes_pre_filter(listing, max_price=1200.0) is True
 
 def test_passes_pre_filter_exclude_parts_laptop():
     listing = Listing(
@@ -44,7 +45,7 @@ def test_passes_pre_filter_exclude_parts_laptop():
         category="Laptopy"
     )
     # Excluded because title contains 'ram' in Laptopy category
-    assert passes_pre_filter(listing, max_price=1200.0, cheap_threshold=250.0) is False
+    assert passes_pre_filter(listing, max_price=1200.0) is False
 
 def test_evaluate_listing_market_search_integration(monkeypatch):
     mock_listing = Listing(

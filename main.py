@@ -34,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main")
 
-MAX_PAGES_PER_CATEGORY = 2
+MAX_PAGES_PER_CATEGORY = 3
 
 def load_seen_data(cache_file: str = SEEN_CACHE_FILE) -> Dict[str, dict]:
     """
@@ -49,7 +49,6 @@ def load_seen_data(cache_file: str = SEEN_CACHE_FILE) -> Dict[str, dict]:
                 if isinstance(data, dict):
                     return data
                 elif isinstance(data, list):
-                    # Convert legacy list of IDs to dict structure
                     return {item_id: {"id": item_id} for item_id in data}
         except Exception as e:
             logger.warning(f"Error reading seen cache file {cache_file}: {e}")
@@ -63,13 +62,12 @@ def save_seen_data(seen_data: Dict[str, dict], cache_file: str = SEEN_CACHE_FILE
     except Exception as e:
         logger.error(f"Error saving seen data to cache file {cache_file}: {e}")
 
-def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float = 400.0) -> bool:
+def passes_pre_filter(listing: Listing, max_price: float) -> bool:
     """
-    Hybrid pre-filter logic with CRITICAL ORDER:
-    Step 1: Check category max_price limit -> Reject if price > max_price.
-    Step 2: Check BLACKLISTS (EXCLUDE_TOYS and EXCLUDE_PARTS) FIRST -> Reject immediately if matched.
-    Step 3: Check cheap_threshold AUTO-PASS (400 PLN) -> Pass if price < cheap_threshold (400 PLN).
-    Step 4: Check FAULT_KEYWORDS -> Pass if title/description contains at least one fault keyword root.
+    Open & Less Restrictive Pre-Filter Logic:
+    1. Rejects if price > max_price limit for category.
+    2. Rejects if title/description contains blacklisted toys (EXCLUDE_TOYS) or laptop components (EXCLUDE_PARTS).
+    3. PASSES ALL OTHER ITEMS to Ollama AI evaluation so the LLM model determines opportunity potential for clean flips and repair deals.
     """
     # Step 1: Maximum price limit check
     if listing.price > max_price:
@@ -78,7 +76,7 @@ def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float
 
     text_to_check = f"{listing.title} {listing.description}".lower()
 
-    # Step 2: Blacklist exclusion checks (CRITICAL: MUST happen BEFORE cheap auto-pass)
+    # Step 2: Blacklist exclusion checks
     # Check 2a: Toy and children item exclusion
     for toy_keyword in EXCLUDE_TOYS:
         if toy_keyword.lower() in text_to_check:
@@ -93,18 +91,8 @@ def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float
                 logger.info(f"Skipping Laptop [{listing.id}] - Title '{listing.title}' contains excluded component keyword '{part}'.")
                 return False
 
-    # Step 3: Very cheap item AUTO-PASS (< 400 PLN) (only reached if NOT on blacklists)
-    if cheap_threshold > 0 and listing.price < cheap_threshold:
-        logger.info(f"Pre-filter AUTO-PASS [{listing.id}] - Price {listing.price} PLN < cheap threshold {cheap_threshold} PLN.")
-        return True
-
-    # Step 4: Keyword matching
-    has_fault_keyword = any(kw.lower() in text_to_check for kw in FAULT_KEYWORDS)
-
-    if not has_fault_keyword:
-        logger.info(f"Skipping [{listing.id}] - Price {listing.price} PLN >= cheap threshold {cheap_threshold} PLN and title/description lacks fault keyword root.")
-        return False
-
+    # Step 3: Open doors - Pass all remaining category items to Ollama AI evaluation
+    logger.info(f"Pre-filter OPEN PASS [{listing.id}] - Passing '{listing.title}' ({listing.price} PLN) to Ollama AI for evaluation.")
     return True
 
 def run_monitoring_cycle(
@@ -115,7 +103,7 @@ def run_monitoring_cycle(
     http_client: httpx.Client = None,
     max_pages: int = MAX_PAGES_PER_CATEGORY
 ) -> List[Listing]:
-    """Execute a single cycle of deep-scan fetching across categories (Vinted), hybrid pre-filtering, evaluating repairs, and notifying."""
+    """Execute a single cycle of deep-scan fetching across categories (Vinted), pre-filtering, evaluating repairs/flips, and notifying."""
     logger.info(f"Starting multi-category electronics deep-scan monitoring cycle #{cycle_number} (Vinted)...")
 
     seen_ids = set(seen_data.keys())
@@ -138,7 +126,6 @@ def run_monitoring_cycle(
         )
 
         max_price = cat_config.get("max_price", 999999.0)
-        cheap_threshold = cat_config.get("cheap_threshold", 400.0)
 
         cat_new_candidates = 0
         for item in scraped_items:
@@ -147,10 +134,9 @@ def run_monitoring_cycle(
                 previous_price = seen_data[item.id].get("price")
                 if previous_price is not None and item.price < previous_price:
                     logger.info(f"🔥 PRICE DROP DETECTED for [{item.id}] '{item.title}': {previous_price} PLN -> {item.price} PLN!")
-                    # Allow re-evaluation due to price drop
                     seen_data[item.id]["price"] = item.price
                     seen_data[item.id]["last_updated"] = time.time()
-                    if passes_pre_filter(item, max_price=max_price, cheap_threshold=cheap_threshold):
+                    if passes_pre_filter(item, max_price=max_price):
                         new_candidates_to_eval.append(item)
                         cat_new_candidates += 1
                 continue
@@ -167,21 +153,20 @@ def run_monitoring_cycle(
             }
             seen_ids.add(item.id)
 
-            if passes_pre_filter(item, max_price=max_price, cheap_threshold=cheap_threshold):
+            if passes_pre_filter(item, max_price=max_price):
                 new_candidates_to_eval.append(item)
                 cat_new_candidates += 1
 
-        logger.info(f"[{cat_name}] {len(scraped_items)} items retrieved, {cat_new_candidates} passed hybrid pre-filter for LLM evaluation.")
+        logger.info(f"[{cat_name}] {len(scraped_items)} items retrieved, {cat_new_candidates} passed pre-filter for LLM evaluation.")
 
     # Periodic re-evaluation of historical seen listings for price drops
     if cycle_number % RE_EVALUATION_INTERVAL_CYCLES == 0:
         logger.info(f"🔄 Periodic historical re-evaluation triggered on cycle #{cycle_number} (checking cached listings for price drops)...")
-        # Save seen_data before running
         save_seen_data(seen_data)
 
     save_seen_data(seen_data)
 
-    logger.info(f"Found {len(new_candidates_to_eval)} total hybrid pre-filtered listings to evaluate with Ollama AI.")
+    logger.info(f"Found {len(new_candidates_to_eval)} total pre-filtered listings to evaluate with Ollama AI.")
 
     processed_listings = []
 
@@ -236,7 +221,7 @@ def is_night_time() -> bool:
     return 1 <= current_hour < 6
 
 def main():
-    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted Rate-Limited)")
+    parser = argparse.ArgumentParser(description="Multi-category Electronics Repair & Flipping Monitor (Vinted Open Pre-Filter)")
     parser.add_argument("--once", action="store_true", help="Run a single check cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Run without calling Ollama API or sending webhooks")
     parser.add_argument("--interval", type=int, default=FETCH_INTERVAL_SECONDS, help="Fetch interval in seconds")
