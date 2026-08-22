@@ -1,10 +1,10 @@
 # Multi-Category Electronics Repair & Flipping Monitor (Vinted + Ollama Qwen 2.5 + Live Market Search)
 
-Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z bezproblemową obsługą cookie bootstrappingu i retry w przypadku HTTP 403, wsparciem dla opcjonalnych serwerów Proxy (`PROXY_URL`), hybrydową pre-filtracją ofert ze ścisłym porządkiem czarnych list, automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search via `ddgs`) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
+Skrypt w języku Python służący do automatycznego monitorowania ogłoszeń sprzętu elektronicznego na portalu **Vinted.pl** (ogłoszenia z OLX tymczasowo wyłączone), z bezproblemową obsługą cookie bootstrappingu i retry w przypadku HTTP 403, wsparciem dla opcjonalnych serwerów Proxy (`PROXY_URL`), zoptymalizowaną wysoce wyczuloną pre-filtracją (auto-pass < 400 PLN), okresową ponowną analizą cen (Price Drop Re-evaluation), automatycznym wyszukiwaniem cen rynkowych w sieci (DuckDuckGo Search via `ddgs`) oraz ustrukturyzowaną analizą rzeczoznawczą przy użyciu **Ollama (`qwen2.5:7b`)**.
 
 ---
 
-## ⚡ Ścisła Kolejność Hybrydowej Pre-Filtracji Ofert
+## ⚡ Hybrydowa Pre-Filtracja Ofert (< 400 PLN Auto-Pass)
 
 Przed przekazaniem oferty do analizy AI, kod Pythona w funkcji `passes_pre_filter` wykonuje szybki przesiew według ściśle ustalonej kolejności:
 
@@ -13,41 +13,39 @@ Przed przekazaniem oferty do analizy AI, kod Pythona w funkcji `passes_pre_filte
 2. **Krok 2: BEZWZGLĘDNE CZARNE LISTY (Przed Auto-Pass!)**:
    - **Zabawki i sprzęt dla dzieci (`EXCLUDE_TOYS`)**: `["edukacyjny", "edykacyjny", "zabawka", "zabawkowy", "dla dzieci", "interaktywny", "fisher price", "hello kitty", "barbie"]`.
    - **Komponenty i części laptopowe (`EXCLUDE_PARTS`)**: `["ram", "procesor", "processzorok", "cpu", "dysk", "ssd", "hdd", "matryca", "płyta główna", "plyta glowna", "obudowa", "klawiatura do", "bateria do"]`.
-   - *Jeśli ogłoszenie zawiera słowo z czarnej listy, zostaje odrzucone NATYCHMIAST (nawet jeśli cena < 150 PLN).*
-3. **Krok 3: Tanie oferty (AUTO-PASS)**:
-   - Laptopy < 250 PLN, Konsole < 150 PLN, Karty graficzne < 150 PLN, Drukarki 3D < 200 PLN, Sprzęt Audio < 150 PLN.
-4. **Krok 4: Słowa Kluczowe Usterek (`FAULT_KEYWORDS`)**:
-   - np. `uszkodz`, `zepsut`, `nietest`, `dawc`, `napraw`, `brak`, `wada`, `pękn`, `zalaw`, `nie włącza`, `artefakt`, `hasło`, `bios`, `część`, `stan`.
+   - *Jeśli ogłoszenie zawiera słowo z czarnej listy, zostaje odrzucone NATYCHMIAST.*
+3. **Krok 3: Tanie oferty (AUTO-PASS dla sprzętu < 400 PLN)**:
+   - Wszystkie nieznajdujące się na czarnej liście urządzenia o cenie **poniżej 400 PLN** automatycznie przechodzą do szczegółowej wyceny przez Ollamę.
+4. **Krok 4: Słowa Kluczowe Usterek dla droższych ofert (`FAULT_KEYWORDS`)**:
+   - Dla ofert >= 400 PLN wymagane jest przynajmniej jedno ze słów kluczowych usterek (`uszkodz`, `zepsut`, `nietest`, `dawc`, `napraw`, `brak`, `wada`, `pękn`, `zalaw`, `nie włącza`, `artefakt`, `hasło`, `bios`, `część`, `stan`).
+
+---
+
+## 🔄 Ponowna Analiza Historii (Price Drop Re-evaluation)
+
+- Jeśli sprzedawca ogłoszenia znajdującego się już w bazie `seen_listings.json` obniży cenę zakupu, skrypt automatycznie wykrywa ten fakt, aktualizuje cenę w bazie i przekazuje ofertę do ponownej analizy AI.
+- Co określoną liczbę cykli (`RE_EVALUATION_INTERVAL_CYCLES = 6`) bot przeprowadza przegląd cache w celu odświeżenia wycen.
+
+---
+
+## ⏱️ Ograniczanie Natężenia Ruchu (3.0s – 7.0s Throttling & Jitter)
+
+1. **Czas Cyklu (`FETCH_INTERVAL_SECONDS = 600`)**: Częstotliwość uruchamiania pętli sprawdzania wynosi **10 minut** (600 sekund).
+2. **Głębokość Skanowania (`MAX_PAGES_PER_CATEGORY = 2`)**: Skanowanie obejmuje **2 strony per kategoria** w automatycznym cyklu.
+3. **Zdrowy Jitter**:
+   - Między stronami w danej kategorii: losowe opóźnienie **3.0s – 7.0s**.
+   - Między poszczególnymi kategoriami: losowe opóźnienie **3.0s – 7.0s**.
+4. **Przerwa Nocna (01:00 – 06:00)**: W godzinach 01:00–06:00 skrypt automatycznie pomija pętlę skanowania i uśnie na **30 minut** (`time.sleep(1800)`).
 
 ---
 
 ## 🌐 Live Wyszukiwanie Cen w Sieci (DuckDuckGo Search via `ddgs`)
 
-Przed wysłaniem ogłoszenia do Ollamy, moduł `market_search.py` (używający nowoczesnego pakietu `ddgs`) pobiera w czasie rzeczywistym **top 3 wyniki z wyszukiwarki DuckDuckGo** dla zapytania `f"{tytul_przedmiotu} cena OLX Allegro"`. Fragmenty z opisami i cenami z sieci są przekazywane do prompta w sekcji `WYNIKI Z WYSZUKIWARKI RYNKOWEJ`.
+Przed wysłaniem ogłoszenia do Ollamy, moduł `market_search.py` pobiera w czasie rzeczywistym **top 3 wyniki z wyszukiwarki DuckDuckGo** dla zapytania `f"{tytul_przedmiotu} cena OLX Allegro"`. Fragmenty z opisami i cenami z sieci są przekazywane do prompta w sekcji `WYNIKI Z WYSZUKIWARKI RYNKOWEJ`.
 
 ### Zasadnicze reguły prompta:
 - Model wycenia wartość rynkową **WYŁĄCZNIE** na podstawie wyników z wyszukiwarki rynkowej.
 - Jeśli wyniki lub opis wskazują, że sprzęt ma wartość rynkową **poniżej 50 PLN**, skrypt automatycznie ustawia `verdict: BRAK_ZYSKU`.
-
----
-
-## ⏱️ Ograniczanie Natężenia Ruchu i Zabezpieczenia (Rate-Limiting)
-
-1. **Czas Cyklu (`FETCH_INTERVAL_SECONDS = 600`)**: Częstotliwość uruchamiania pętli sprawdzania wynosi **10 minut** (600 sekund).
-2. **Głębokość Skanowania (`MAX_PAGES_PER_CATEGORY = 2`)**: Domyślna głębokość skanowania wynosi **2 strony per kategoria** w automatycznym cyklu.
-3. **Throttling & Jitter**:
-   - Między stronami w danej kategorii: losowe opóźnienie **1.5s – 3.0s**.
-   - Między poszczególnymi kategoriami: losowe opóźnienie **3.0s – 6.0s**.
-4. **Przerwa Nocna (01:00 – 06:00)**: Jeśli godzina systemowa znajduje się w przedziale 01:00–06:00, skrypt automatycznie pomija pętlę skanowania i uśnie na **30 minut** (`time.sleep(1800)`).
-
----
-
-## 🛡️ Dedykowana Obsługa Sesji, Proxy i Obejście 403 (Cookie Bootstrapping & Retry)
-
-Skraper Vinted (`scrapers/vinted.py`) stosuje zaawansowane mechanizmy radzenia sobie z ochroną przed botami:
-1. **Opcjonalne Proxy (`PROXY_URL`)**: Obsługa zmiennej środowiskowej `PROXY_URL` (np. `http://user:pass@host:port` lub `socks5://host:port`).
-2. **Cookie Bootstrapping (`bootstrap_vinted_session`)**: Odwiedzanie strony głównej `https://www.vinted.pl/` przy użyciu `curl_cffi.requests.Session(impersonate="chrome120")` i nagłówków nawigacyjnych Chrome 120.
-3. **Automatyczny Retry po 403 z Dedykowaną Obsługą Wyjątków**: Obsługa odświeżania ciasteczek przy wyłapaniu `HTTPError` / `RequestException`.
 
 ---
 

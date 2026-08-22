@@ -14,6 +14,8 @@ SHIPPING_COST_PLN = float(os.getenv("SHIPPING_COST_PLN", "20.0"))
 
 # Scraper settings
 FETCH_INTERVAL_SECONDS = int(os.getenv("FETCH_INTERVAL_SECONDS", "600"))
+RE_EVALUATION_INTERVAL_CYCLES = int(os.getenv("RE_EVALUATION_INTERVAL_CYCLES", "6"))
+
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -85,39 +87,39 @@ EXCLUDE_TOYS = [
     "barbie"
 ]
 
-# Multi-category electronics configuration with raised max_price limits and cheap auto-pass thresholds
+# Multi-category electronics configuration with raised max_price limits and 400 PLN cheap auto-pass thresholds
 CATEGORIES = {
     "Laptopy": {
         "max_price": 1200.0,
-        "cheap_threshold": 250.0,
+        "cheap_threshold": 400.0,
         "keywords": ["laptop", "thinkpad", "dell latitude", "uszkodzony", "brak dysku"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/laptopy/",
         "vinted_search": "laptop"
     },
     "Konsole": {
         "max_price": 900.0,
-        "cheap_threshold": 150.0,
+        "cheap_threshold": 400.0,
         "keywords": ["ps4", "xbox one", "switch", "nie czyta płyt", "głośno chodzi"],
         "olx_url": "https://www.olx.pl/elektronika/gry-konsole/",
         "vinted_search": "konsola"
     },
     "Karty graficzne": {
         "max_price": 1000.0,
-        "cheap_threshold": 150.0,
+        "cheap_threshold": 400.0,
         "keywords": ["rtx", "gtx", "rx", "artefakty", "przegrzewa się"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/czesci/karty-graficzne/",
         "vinted_search": "karta graficzna"
     },
     "Drukarki 3D": {
         "max_price": 800.0,
-        "cheap_threshold": 200.0,
+        "cheap_threshold": 400.0,
         "keywords": ["ender", "neptune", "zatkana", "brak serwa"],
         "olx_url": "https://www.olx.pl/elektronika/komputery/drukarki-skanery/",
         "vinted_search": "drukarka 3d"
     },
     "Sprzęt Audio": {
         "max_price": 600.0,
-        "cheap_threshold": 150.0,
+        "cheap_threshold": 400.0,
         "keywords": ["amplituner", "brak dźwięku", "trzeszczy", "uszkodzony kanał"],
         "olx_url": "https://www.olx.pl/elektronika/sprzet-audio/",
         "vinted_search": "amplituner"

@@ -127,7 +127,6 @@ def fetch_vinted_listings(
         should_close = True
 
     try:
-        # Bootstrap session if no cookies present
         if not session.cookies:
             bootstrap_vinted_session(session)
 
@@ -142,7 +141,6 @@ def fetch_vinted_listings(
             try:
                 response = session.get(VINTED_API_URL, params=params, headers=API_HEADERS, timeout=15)
 
-                # If 403 Forbidden, refresh session cookies and retry
                 if response.status_code == 403 and attempt < MAX_403_RETRIES:
                     logger.warning(f"HTTP 403 Forbidden on page {page} attempt {attempt+1}/{MAX_403_RETRIES+1}. Refreshing Vinted session cookies...")
                     time.sleep(random.uniform(2.0, 4.0))
@@ -183,9 +181,9 @@ def fetch_vinted_listings_deep(
     max_pages: int = MAX_PAGES_DEFAULT
 ) -> List[Listing]:
     """
-    Incremental deep scan with random throttling delays:
+    Incremental deep scan with healthy random throttling delays (3.0s - 7.0s):
     1. Fetch Page 1 first (newest items).
-    2. Add random delay (1.5 - 3.0s) between pages.
+    2. Add random delay (3.0s - 7.0s) between pages.
     3. Stop when all items on a page are already in seen_ids, or max_pages limit is reached.
     """
     if seen_ids is None:
@@ -201,7 +199,7 @@ def fetch_vinted_listings_deep(
     try:
         for page in range(1, max_pages + 1):
             if page > 1:
-                delay = random.uniform(1.5, 3.0)
+                delay = random.uniform(3.0, 7.0)
                 logger.info(f"Throttling delay: waiting {delay:.2f}s before fetching page {page}...")
                 time.sleep(delay)
 
