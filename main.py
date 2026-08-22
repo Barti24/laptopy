@@ -57,27 +57,27 @@ def save_seen_ids(seen_ids: Set[str], cache_file: str = SEEN_CACHE_FILE) -> None
 
 def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float = 0.0) -> bool:
     """
-    Hybrid pre-filter logic:
-    1. Must not exceed category max_price limit.
-    2. Must NOT contain toy keywords (EXCLUDE_TOYS) in title or description.
-    3. For 'Laptopy', title must NOT contain spare parts keywords (EXCLUDE_PARTS).
-    4. Passes to AI evaluation if:
-       a) Price is below cheap_threshold (auto-pass without keyword requirement), OR
-       b) Title/Description contains at least one fault keyword root.
+    Hybrid pre-filter logic with CRITICAL ORDER:
+    Step 1: Check category max_price limit -> Reject if price > max_price.
+    Step 2: Check BLACKLISTS (EXCLUDE_TOYS and EXCLUDE_PARTS) FIRST -> Reject immediately if matched (BEFORE cheap auto-pass).
+    Step 3: Check cheap_threshold AUTO-PASS -> Pass if price < cheap_threshold.
+    Step 4: Check FAULT_KEYWORDS -> Pass if title/description contains at least one fault keyword root.
     """
+    # Step 1: Maximum price limit check
     if listing.price > max_price:
         logger.info(f"Skipping [{listing.id}] - Price {listing.price} PLN exceeds category max limit {max_price} PLN.")
         return False
 
     text_to_check = f"{listing.title} {listing.description}".lower()
 
-    # Rule 1: Toy and children item exclusion check
+    # Step 2: Blacklist exclusion checks (CRITICAL: MUST happen BEFORE cheap auto-pass)
+    # Check 2a: Toy and children item exclusion
     for toy_keyword in EXCLUDE_TOYS:
         if toy_keyword.lower() in text_to_check:
-            logger.info(f"Skipping [{listing.id}] - Title/Description contains toy exclusion keyword '{toy_keyword}'.")
+            logger.info(f"Skipping [{listing.id}] - Title/Description contains blacklisted toy keyword '{toy_keyword}'.")
             return False
 
-    # Rule 2: Laptop spare parts exclusion check
+    # Check 2b: Laptop spare parts exclusion
     if listing.category == "Laptopy":
         title_lower = listing.title.lower()
         for part in EXCLUDE_PARTS:
@@ -85,12 +85,12 @@ def passes_pre_filter(listing: Listing, max_price: float, cheap_threshold: float
                 logger.info(f"Skipping Laptop [{listing.id}] - Title '{listing.title}' contains excluded component keyword '{part}'.")
                 return False
 
-    # Condition A: Very cheap item auto-pass
+    # Step 3: Very cheap item AUTO-PASS (only reached if NOT on blacklists)
     if cheap_threshold > 0 and listing.price < cheap_threshold:
         logger.info(f"Pre-filter AUTO-PASS [{listing.id}] - Price {listing.price} PLN < cheap threshold {cheap_threshold} PLN.")
         return True
 
-    # Condition B: Keyword matching
+    # Step 4: Keyword matching
     has_fault_keyword = any(kw.lower() in text_to_check for kw in FAULT_KEYWORDS)
 
     if not has_fault_keyword:

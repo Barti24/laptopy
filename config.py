@@ -74,18 +74,15 @@ EXCLUDE_PARTS = [
 
 # Pre-filtering exclusion keywords for toys and children items
 EXCLUDE_TOYS = [
+    "edukacyjny",
+    "edykacyjny",
     "zabawka",
     "zabawkowy",
-    "edukacyjny",
     "dla dzieci",
-    "hello kitty",
-    "barbie",
-    "fisher price",
     "interaktywny",
-    "grający",
-    "minnie",
-    "paws",
-    "psi patrol"
+    "fisher price",
+    "hello kitty",
+    "barbie"
 ]
 
 # Multi-category electronics configuration with raised max_price limits and cheap auto-pass thresholds

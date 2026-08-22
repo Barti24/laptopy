@@ -5,18 +5,18 @@ from models import Listing
 from ollama_evaluator import evaluate_listing_with_ollama
 from main import passes_pre_filter
 
-def test_passes_pre_filter_exclude_toys():
+def test_passes_pre_filter_exclude_toys_overrides_cheap_pass():
     listing = Listing(
-        id="test_toy_1",
-        title="Laptop zabawek fisher price edukacyjny dla dzieci",
-        price=30.0,
+        id="test_cheap_toy",
+        title="Laptop zabaweczka fisher price edukacyjny dlay dzieci barbie",
+        price=15.0,  # Extremely cheap (< cheap_threshold), BUT matches toy blacklist!
         currency="PLN",
-        description="Grający komputerek interaktywny psi patrol barbie.",
-        url="https://example.com/toy",
+        description="Grający komputerek interaktywny fisher price.",
+        url="https://example.com/cheaptoy",
         platform="Vinted",
         category="Laptopy"
     )
-    # Excluded immediately due to toy keywords (fisher price, dla dzieci, interaktywny, psi patrol)
+    # MUST be rejected at Step 2 despite price = 15 PLN < 250 PLN cheap_threshold
     assert passes_pre_filter(listing, max_price=1200.0, cheap_threshold=250.0) is False
 
 def test_passes_pre_filter_keyword_matching():
